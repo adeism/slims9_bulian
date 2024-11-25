@@ -3,26 +3,42 @@ version: '3.9'
 services:
   app:
     build:
-      context: .  # Gunakan Dockerfile di root
-    container_name: php-app
+      context: .
+    container_name: slims-app
     volumes:
       - .:/var/www/html
     networks:
-      - app-network
+      - slims-network
+
+  db:
+    image: mariadb:10.3
+    container_name: slims-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: slims
+      MYSQL_USER: slims_user
+      MYSQL_PASSWORD: slims_password
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - slims-network
 
   nginx:
     image: nginx:alpine
-    container_name: nginx
+    container_name: slims-nginx
     volumes:
-      - ./default.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
       - .:/var/www/html
     ports:
       - "8080:80"
     depends_on:
       - app
     networks:
-      - app-network
+      - slims-network
 
 networks:
-  app-network:
+  slims-network:
     driver: bridge
+
+volumes:
+  db_data:
