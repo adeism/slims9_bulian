@@ -1,5 +1,5 @@
 -- Set root password
-ALTER USER 'root'@'localhost' IDENTIFIED BY 'Sudahsholat?';
+ALTER USER 'root'@'localhost' IDENTIFIED BY 'K3tikaja!';
 FLUSH PRIVILEGES;
 
 -- Create slims database
