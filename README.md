@@ -1,18 +1,63 @@
-SLiMS 9 Bulian
-===============
-SENAYAN Library Management System (SLiMS) version 9 Codename Bulian
+# 📚 SLiMS 9 Bulian
 
-SLiMS is free open source software for library resources management
-(such as books, journals, digital document and other library materials)
-and administration such as collection circulation, collection management,
-membership, stock taking and many other else.
+## 🖥️ Senayan Library Management System (SLiMS)
 
-SLiMS is licensed under GNU GPL version 3. Please read "GPL-3.0 License.txt"
-to learn more about GPL.
+SLiMS versi 9 dengan kode nama Bulian adalah perangkat lunak sumber terbuka gratis untuk manajemen perpustakaan.
 
-### System Requirements
-- PHP version >= 8.1;
-- MySQL version 5.7 and or MariaDB version 10.3;
-- PHP GD enabled
-- PHP gettext enabled
-- PHP mbstring enabled
+### 🌟 Fitur Utama
+- 📖 Manajemen sumber daya perpustakaan
+- 📑 Administrasi sirkulasi koleksi
+- 👥 Manajemen keanggotaan
+- 📊 Pengambilan stok
+- 🔍 Pencarian dan katalogisasi
+
+🔒 **Lisensi**: GNU GPL versi 3
+
+### 🛠️ Persyaratan Sistem
+
+| Komponen | Spesifikasi |
+|----------|-------------|
+| 💡 PHP | Versi >= 8.1 |
+| 🗃️ Database | MySQL 5.7 atau MariaDB 10.3 |
+| ✅ Ekstensi PHP | GD, gettext, mbstring |
+
+### 💼 Instalasi dengan Docker
+
+#### Prasyarat
+1. 🔧 Instal [Docker](https://docs.docker.com/get-docker/)
+2. 🧩 Instal [Docker Compose](https://docs.docker.com/compose/install/)
+
+#### Langkah Instalasi
+
+1. **Clone Repository**
+```bash
+git clone https://github.com/adeism/slims9_bulian.git
+cd slims9_bulian
+```
+
+2. **Ubah konfigurasi file .env (dalam folder docker)**
+```bash
+# default file .env dengan konfigurasi berikut
+MYSQL_ROOT_PASSWORD=rootpassword
+MYSQL_DATABASE=my_database
+MYSQL_USER=my_user
+MYSQL_PASSWORD=my_password
+PMA_PORT=8080
+```
+
+3. **Build Image Docker**
+```bash
+docker-compose build
+```
+
+4. **Jalankan Aplikasi**
+```bash
+docker-compose up -d
+```
+
+### 🌐 Akses Aplikasi
+
+| Aplikasi | URL |
+|----------|-----|
+| 🌍 Web SLiMS | http://localhost |
+| 🗂️ phpMyAdmin | http://localhost:8080 |
