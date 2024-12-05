@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     libonig-dev \
     libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install gd gettext mbstring zip \
+    && docker-php-ext-install gd gettext mbstring zip pdo pdo_mysql \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Enable Apache modules
