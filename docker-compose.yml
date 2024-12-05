@@ -1,0 +1,45 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: my_web
+    ports:
+      - "80:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/custom.conf:/etc/apache2/sites-available/000-default.conf
+    depends_on:
+      - db
+    restart: always
+    # Jika tidak memerlukan variabel lingkungan untuk web, blok environment dapat dihapus
+    # environment:
+    #   APP_ENV: production
+
+  db:
+    image: mariadb:latest
+    container_name: my_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: my_phpmyadmin
+    restart: always
+    ports:
+      - "${PMA_PORT:-8080}:80"
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    depends_on:
+      - db
+
+volumes:
+  db_data:
+    driver: local
