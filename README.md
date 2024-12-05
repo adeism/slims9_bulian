@@ -21,11 +21,7 @@ SLiMS versi 9 dengan kode nama Bulian adalah perangkat lunak sumber terbuka grat
 | 🗃️ Database | MySQL 5.7 atau MariaDB 10.3 |
 | ✅ Ekstensi PHP | GD, gettext, mbstring |
 
-### 💼 Instalasi dengan Docker
-
-#### Prasyarat
-1. 🔧 Instal [Docker](https://docs.docker.com/get-docker/)
-2. 🧩 Instal [Docker Compose](https://docs.docker.com/compose/install/)
+## 💼 Instalasi dengan Docker
 
 #### Langkah Instalasi
 
