@@ -1,4 +1,4 @@
-FROM php:8.3.13-apache
+FROM php:8.3-apache
 
 # Install necessary PHP extensions and dependencies
 RUN apt-get update && apt-get install -y \
