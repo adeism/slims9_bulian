@@ -1,32 +1,38 @@
+version: "3.8"
+
 services:
   web:
+    image: heroku/herokuish:latest
+    container_name: my_web
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: my_web
+      dockerfile: Dockerfile  # Menentukan Dockerfile jika Anda ingin kustomisasi lebih lanjut
+    command: ["nixpacks", "build"]  # Memanggil Nixpacks untuk membangun aplikasi Anda
     ports:
       - "80:80"
     volumes:
-      - .:/var/www/html
-      - ./apache-custom.conf:/etc/apache2/sites-available/000-default.conf
+      - .:/app  # Mount direktori lokal ke dalam container
     depends_on:
       - db
     restart: always
-    # Jika tidak memerlukan variabel lingkungan untuk web, blok environment dapat dihapus
-    # environment:
-    #   APP_ENV: production
+    environment:
+      - APP_ENV=production
+    networks:
+      - app_network
 
   db:
     image: mariadb:latest
     container_name: my_db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - db_data:/var/lib/mysql
+    networks:
+      - app_network
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin:latest
@@ -39,7 +45,13 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     depends_on:
       - db
+    networks:
+      - app_network
 
 volumes:
   db_data:
     driver: local
+
+networks:
+  app_network:
+    driver: bridge
