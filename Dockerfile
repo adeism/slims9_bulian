@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 RUN a2enmod rewrite
 
 # Copy custom Apache configuration
-COPY docker/custom.conf /etc/apache2/sites-available/000-default.conf
+COPY ./apache-custom.conf /etc/apache2/sites-available/000-default.conf
 
 # Set the working directory
 WORKDIR /var/www/html
