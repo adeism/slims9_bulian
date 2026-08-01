@@ -31,7 +31,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Font Awesome -->
-    <link rel="stylesheet" href="<?php echo JWB; ?>font-awesome/css/font-awesome.min.css">
+    <link rel="stylesheet" href="<?php echo JWB; ?>font-awesome/css/fontawesome.min.css">
 
     <!-- Bootstrap Core CSS (required by SLiMS) -->
     <link href="<?php echo SWB; ?>css/bootstrap.min.css?<?php echo date('this') ?>" rel="stylesheet" type="text/css" />
