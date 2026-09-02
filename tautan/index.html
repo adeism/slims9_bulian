@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tautan — Satu tempat untuk semua link, halaman, form, dan campaign</title>
+<meta name="description" content="Satu aplikasi untuk membuat link pendek, microsite, formulir, QR code, dan halaman berbagi aman.">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%234f46e5%22/><path d=%22M8 12 C8 8, 12 8, 16 12 C20 16, 24 16, 24 12%22 stroke=%22white%22 stroke-width=%222.5%22 fill=%22none%22 stroke-linecap=%22round%22/><circle cx=%2216%22 cy=%2220%22 r=%223%22 fill=%22white%22/></svg>">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+  .animate-in { animation: in 0.2s ease-out; }
+  @keyframes in { from { opacity:0; transform: translateY(4px);} to { opacity:1; transform: translateY(0);} }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+  <!-- Setup Container -->
+  <div id="setup-container"></div>
+
+  <!-- App Container (hidden until setup complete) -->
+  <div id="app" class="hidden min-h-screen">
+    <!-- Header -->
+    <header class="sticky top-0 z-30 bg-white/80 backdrop-blur border-b">
+      <div class="max-w-[1400px] mx-auto px-4 h-[64px] flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <button id="mobile-menu-btn" class="lg:hidden w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center">☰</button>
+          <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold">T</div>
+          <div>
+            <div class="font-bold leading-none">Tautan</div>
+            <div class="text-[11px] text-slate-500 leading-none mt-0.5">v0.1.0 • <span id="mode-badge" class="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full">Demo Mode</span></div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="hidden md:flex items-center gap-2 text-xs">
+            <span id="workspace-name" class="px-2.5 py-1 bg-slate-100 rounded-full">Workspace</span>
+            <span id="user-name" class="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full">User</span>
+          </div>
+          <button id="quick-create-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700">+ Buat Baru</button>
+          <button onclick="document.getElementById('help-center-modal').classList.toggle('hidden')" class="w-9 h-9 rounded-xl bg-white border flex items-center justify-center">?</button>
+          <button id="logout-btn" class="w-9 h-9 rounded-xl bg-white border flex items-center justify-center">↪</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="max-w-[1400px] mx-auto flex">
+      <!-- Sidebar -->
+      <aside id="sidebar" class="fixed lg:sticky top-[64px] lg:top-[64px] left-0 z-20 w-[280px] h-[calc(100vh-64px)] bg-white border-r lg:border-r-0 lg:bg-transparent overflow-auto p-4 hidden lg:block">
+        <nav class="space-y-1" id="sidebar-nav">
+          <!-- injected -->
+        </nav>
+        <div class="mt-6 p-3 bg-indigo-50 border border-indigo-100 rounded-2xl">
+          <div class="text-xs font-semibold text-indigo-900">Checklist aktivasi</div>
+          <div class="text-[11px] text-indigo-700 mt-1">Selesaikan 4 langkah untuk aktivasi penuh</div>
+          <div id="sidebar-checklist" class="mt-2"></div>
+        </div>
+        <div class="mt-4 text-[11px] text-slate-400">
+          <div>Role: <span id="sidebar-role">-</span></div>
+          <div>Mode: Demo (mudah dinonaktifkan)</div>
+          <div class="mt-2"><a href="#/settings" class="underline">Settings → Reset onboarding</a></div>
+        </div>
+      </aside>
+
+      <!-- Main -->
+      <main class="flex-1 min-w-0 p-4 lg:p-6">
+        <div id="page-header" class="mb-4"></div>
+        <div id="main-content" class="animate-in">
+          <!-- dynamic -->
+        </div>
+      </main>
+    </div>
+
+    <!-- Quick Create Menu -->
+    <div id="quick-create-menu" class="hidden fixed top-[70px] right-4 z-40 bg-white rounded-2xl shadow-xl border w-64 p-2">
+      <div class="text-xs font-semibold text-slate-500 px-3 py-2">Buat Baru</div>
+      <button onclick="window.navigateTo('#/shortlinks'); window.toggleQuickCreate()" class="w-full text-left px-3 py-2.5 hover:bg-slate-50 rounded-xl flex gap-2"><span>🔗</span><div><div class="text-sm font-medium">Shortlink</div><div class="text-[11px] text-slate-500">Link pendek + tracking</div></div></button>
+      <button onclick="window.navigateTo('#/microsites/builder'); window.toggleQuickCreate()" class="w-full text-left px-3 py-2.5 hover:bg-slate-50 rounded-xl flex gap-2"><span>🌐</span><div><div class="text-sm font-medium">Microsite</div><div class="text-[11px] text-slate-500">Halaman blok drag-drop</div></div></button>
+      <button onclick="window.navigateTo('#/forms/builder'); window.toggleQuickCreate()" class="w-full text-left px-3 py-2.5 hover:bg-slate-50 rounded-xl flex gap-2"><span>📋</span><div><div class="text-sm font-medium">Form</div><div class="text-[11px] text-slate-500">Form drag-drop</div></div></button>
+      <button onclick="window.navigateTo('#/qr'); window.toggleQuickCreate()" class="w-full text-left px-3 py-2.5 hover:bg-slate-50 rounded-xl flex gap-2"><span>🔲</span><div><div class="text-sm font-medium">QR Code</div><div class="text-[11px] text-slate-500">Generate QR</div></div></button>
+      <button onclick="window.navigateTo('#/campaigns/wizard'); window.toggleQuickCreate()" class="w-full text-left px-3 py-2.5 hover:bg-indigo-50 rounded-xl flex gap-2 border border-indigo-100 mt-1"><span>📁</span><div><div class="text-sm font-medium">Campaign Lengkap</div><div class="text-[11px] text-slate-500">5 langkah: microsite+form+link+QR</div></div></button>
+      <button onclick="window.navigateTo('#/templates'); window.toggleQuickCreate()" class="w-full text-left px-3 py-2.5 hover:bg-slate-50 rounded-xl flex gap-2"><span>🎨</span><div><div class="text-sm font-medium">Dari Template</div><div class="text-[11px] text-slate-500">Event, Library, UMKM</div></div></button>
+    </div>
+
+    <!-- Help Center Modal -->
+    <div id="help-center-modal" class="hidden fixed inset-0 z-[100] bg-black/30 backdrop-blur-sm p-4 flex items-center justify-center">
+      <div class="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-auto">
+        <div class="p-5 border-b flex justify-between"><h3 class="font-semibold">Pusat Bantuan</h3><button onclick="document.getElementById('help-center-modal').classList.add('hidden')" class="w-8 h-8 rounded-full hover:bg-slate-100">✕</button></div>
+        <div class="p-5" id="help-center-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container injected by Toast.js -->
+
+<script type="module">
+import { storage } from './core/storage.js';
+import { featureFlags } from './core/config.js';
+import { initSetup } from './onboarding/setup.js';
+import { renderChecklist } from './onboarding/checklist.js';
+import { startGuide } from './onboarding/guide.js';
+import { renderHelpCenter } from './tutorials/help-center.js';
+import { Router } from './core/router.js';
+import { renderShortlinks } from './modules/shortlinks/ShortlinkUI.js';
+import { renderMicrositesList, renderMicrositeBuilder } from './modules/microsites/MicrositeBuilder.js';
+import { renderFormsList, renderFormBuilder } from './modules/forms/FormBuilder.js';
+import { renderPublicForm } from './modules/forms/FormRenderer.js';
+import { renderQRStudio } from './modules/qr/QRStudio.js';
+import { renderCampaignsList, renderCampaignWizard } from './modules/campaigns/CampaignWizard.js';
+import { renderAnalytics } from './modules/analytics/AnalyticsDashboard.js';
+import { renderWorkspace } from './modules/workspace/WorkspaceManager.js';
+import { renderMediaLibrary } from './modules/media/MediaLibrary.js';
+import { renderTemplates } from './modules/templates/TemplateCenter.js';
+import { showToast } from './shared/components/Toast.js';
+
+const setupContainer = document.getElementById('setup-container');
+const appEl = document.getElementById('app');
+
+function checkSetup() {
+  const user = storage.getCurrentUser();
+  const progress = storage.getSetupProgress();
+  if (!user || !progress?.completed) {
+    appEl.classList.add('hidden');
+    setupContainer.classList.remove('hidden');
+    initSetup('setup-container', () => {
+      setupContainer.classList.add('hidden');
+      appEl.classList.remove('hidden');
+      initApp();
+    });
+  } else {
+    setupContainer.classList.add('hidden');
+    appEl.classList.remove('hidden');
+    initApp();
+  }
+}
+
+function initApp() {
+  const user = storage.getCurrentUser();
+  const wsId = storage.get('current_workspace_id');
+  const workspaces = storage.getWorkspaces();
+  const currentWs = workspaces.find(w=>w.id===wsId);
+
+  document.getElementById('workspace-name').textContent = currentWs?.name || 'Workspace';
+  document.getElementById('user-name').textContent = `${user?.avatar||''} ${user?.name} • ${user?.displayRole||user?.role}`;
+  document.getElementById('sidebar-role').textContent = `${user?.displayRole} • ${user?.workspace_role||'owner'}`;
+  document.getElementById('mode-badge').textContent = user?.mode==='demo' ? 'Demo Mode' : 'Production';
+  if (featureFlags.demoMode.enabled) document.getElementById('mode-badge').classList.add('bg-amber-100','text-amber-700');
+  else document.getElementById('mode-badge').classList.add('bg-green-100','text-green-700');
+
+  // Sidebar nav
+  const navItems = [
+    { path: '/overview', label: 'Overview', icon: '🏠', desc: 'Ringkasan semua aset' },
+    { path: '/campaigns', label: 'Campaigns', icon: '📁', desc: 'Ruang kerja gabungan' },
+    { path: '/shortlinks', label: 'Shortlinks', icon: '🔗', desc: 'Kelola redirect' },
+    { path: '/microsites', label: 'Microsites', icon: '🌐', desc: 'Halaman blok' },
+    { path: '/forms', label: 'Forms', icon: '📋', desc: 'Form Maker' },
+    { path: '/qr', label: 'QR Studio', icon: '🔲', desc: 'Buat QR' },
+    { path: '/analytics', label: 'Analytics', icon: '📊', desc: 'Lintas aset' },
+    { path: '/media', label: 'Assets', icon: '🖼️', desc: 'Media library' },
+    { path: '/templates', label: 'Templates', icon: '🎨', desc: 'Preset' },
+    { path: '/workspace', label: 'Workspace', icon: '👥', desc: 'Anggota & branding' },
+    { path: '/admin', label: 'Admin Center', icon: '🛡️', desc: 'Moderasi & audit', adminOnly: true },
+  ];
+  const sidebarNav = document.getElementById('sidebar-nav');
+  sidebarNav.innerHTML = navItems.filter(i=> !i.adminOnly || user?.is_superadmin).map(i=>`
+    <a href="#${i.path}" data-path="${i.path}" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-100 text-sm">
+      <span class="text-base">${i.icon}</span><div class="flex-1"><div class="font-medium">${i.label}</div><div class="text-[11px] text-slate-500">${i.desc}</div></div>
+    </a>
+  `).join('');
+
+  // Checklist
+  renderChecklist('sidebar-checklist');
+  renderHelpCenter('help-center-content');
+
+  // Quick create toggle
+  window.toggleQuickCreate = () => {
+    document.getElementById('quick-create-menu').classList.toggle('hidden');
+  };
+  document.getElementById('quick-create-btn').onclick = window.toggleQuickCreate;
+  document.addEventListener('click', (e)=>{
+    const menu = document.getElementById('quick-create-menu');
+    const btn = document.getElementById('quick-create-btn');
+    if (!menu.contains(e.target) && !btn.contains(e.target)) menu.classList.add('hidden');
+  });
+
+  // Mobile menu
+  document.getElementById('mobile-menu-btn').onclick = () => {
+    document.getElementById('sidebar').classList.toggle('hidden');
+  };
+
+  // Logout
+  document.getElementById('logout-btn').onclick = () => {
+    if (confirm('Keluar? Setup akan direset jika demo.')) {
+      storage.remove('current_user');
+      storage.setSetupProgress(null);
+      location.reload();
+    }
+  };
+
+  // Router
+  const routes = [
+    { path: '/overview', handler: renderOverview },
+    { path: '/campaigns', handler: () => renderCampaignsList('main-content') },
+    { path: '/campaigns/wizard', handler: () => renderCampaignWizard('main-content') },
+    { path: '/campaigns/:id', handler: (p)=> renderCampaignDetail(p.id) },
+    { path: '/shortlinks', handler: () => renderShortlinks('main-content') },
+    { path: '/microsites', handler: () => renderMicrositesList('main-content') },
+    { path: '/microsites/builder', handler: () => renderMicrositeBuilder('main-content') },
+    { path: '/microsites/builder/:id', handler: (p)=> renderMicrositeBuilder('main-content', p.id) },
+    { path: '/forms', handler: () => renderFormsList('main-content') },
+    { path: '/forms/builder', handler: () => renderFormBuilder('main-content') },
+    { path: '/forms/builder/:id', handler: (p)=> renderFormBuilder('main-content', p.id) },
+    { path: '/forms/responses/:id', handler: (p)=> renderFormResponses(p.id) },
+    { path: '/f/:slug', handler: (p)=> renderPublicForm('main-content', p.slug) },
+    { path: '/qr', handler: () => renderQRStudio('main-content') },
+    { path: '/analytics', handler: () => renderAnalytics('main-content') },
+    { path: '/media', handler: () => renderMediaLibrary('main-content') },
+    { path: '/templates', handler: () => renderTemplates('main-content') },
+    { path: '/workspace', handler: () => renderWorkspace('main-content') },
+    { path: '/admin', handler: renderAdmin },
+    { path: '/settings', handler: renderSettings },
+    { path: '*', handler: renderOverview }
+  ];
+
+  const router = new Router(routes);
+  window.navigateTo = (path) => router.navigate(path);
+
+  // Highlight active nav
+  const origHandle = router.handle.bind(router);
+  router.handle = () => {
+    origHandle();
+    const hash = window.location.hash.replace('#','') || '/overview';
+    document.querySelectorAll('.nav-link').forEach(a=>{
+      if (hash.startsWith(a.dataset.path)) a.classList.add('bg-indigo-50','text-indigo-700','border','border-indigo-100');
+      else a.classList.remove('bg-indigo-50','text-indigo-700','border','border-indigo-100');
+    });
+  };
+  router.handle();
+
+  // First guide if not dismissed
+  if (!localStorage.getItem('tautan_guide_shortlink')) {
+    setTimeout(()=> startGuide('shortlink'), 1500);
+  }
+
+  // Contextual help bubbles
+  setTimeout(()=>{
+    import('./shared/components/HelpBubble.js').then(m=>{
+      m.createHelpBubble({ id: 'overview-quick-create', text: 'Klik + Buat Baru untuk mulai cepat', targetSelector: '#quick-create-btn' });
+    });
+  }, 2000);
+}
+
+function renderOverview() {
+  const container = document.getElementById('main-content');
+  const header = document.getElementById('page-header');
+  const wsId = storage.get('current_workspace_id');
+  const user = storage.getCurrentUser();
+  const campaigns = storage.getCampaigns().filter(c=>c.workspace_id===wsId);
+  const links = storage.getLinks().filter(l=>l.workspace_id===wsId);
+  const microsites = storage.getMicrosites().filter(m=>m.workspace_id===wsId);
+  const forms = storage.getForms().filter(f=>f.workspace_id===wsId);
+  const qrs = storage.getQrCodes().filter(q=>q.workspace_id===wsId);
+  const events = storage.getAnalyticsEvents().filter(e=>e.workspace_id===wsId);
+  const recent = [...links, ...microsites, ...forms].sort((a,b)=> new Date(b.created_at)-new Date(a.created_at)).slice(0,3);
+
+  header.innerHTML = `
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div><h1 class="text-xl font-bold">Halo, ${user?.name} 👋</h1><p class="text-sm text-slate-500">Apa yang ingin Anda lakukan hari ini? Pilih tugas untuk capai nilai cepat.</p></div>
+      <div class="flex gap-2"><button onclick="window.navigateTo('#/shortlinks')" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">+ Buat Shortlink</button><button onclick="window.navigateTo('#/campaigns/wizard')" class="px-4 py-2 bg-white border rounded-xl text-sm">Campaign Lengkap</button></div>
+    </div>
+  `;
+
+  container.innerHTML = `
+    <div class="grid md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-2xl border p-4"><div class="text-xs text-slate-500">Campaigns</div><div class="text-2xl font-bold mt-1">${campaigns.length}</div><div class="text-xs text-slate-400 mt-1">Ruang kerja gabungan</div></div>
+      <div class="bg-white rounded-2xl border p-4"><div class="text-xs text-slate-500">Shortlinks</div><div class="text-2xl font-bold mt-1">${links.length}</div><div class="text-xs text-slate-400 mt-1">${links.reduce((s,l)=>s+(l.clicks||0),0)} klik total</div></div>
+      <div class="bg-white rounded-2xl border p-4"><div class="text-xs text-slate-500">Microsites</div><div class="text-2xl font-bold mt-1">${microsites.length}</div><div class="text-xs text-slate-400 mt-1">${microsites.reduce((s,m)=>s+(m.views||0),0)} views</div></div>
+      <div class="bg-white rounded-2xl border p-4"><div class="text-xs text-slate-500">Forms</div><div class="text-2xl font-bold mt-1">${forms.length}</div><div class="text-xs text-slate-400 mt-1">${storage.get('form_responses',[]).length} respons</div></div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-4">
+      <div class="lg:col-span-2 space-y-4">
+        <div class="bg-white rounded-2xl border p-5">
+          <h3 class="font-semibold text-sm">Lanjutkan dari terakhir</h3>
+          ${recent.length? `<div class="mt-3 space-y-2">${recent.map(r=>`<div class="flex items-center gap-3 p-2.5 bg-slate-50 rounded-xl"><div class="w-8 h-8 bg-white border rounded-lg flex items-center justify-center text-sm">${r.slug?'🔗':'📄'}</div><div class="flex-1"><div class="text-sm font-medium">${r.title||r.name||r.slug}</div><div class="text-xs text-slate-500">/${r.slug} • ${r.status||'active'}</div></div><button onclick="window.navigateTo('#/${r.slug?'shortlinks': r.blocks?'microsites':'forms'}')" class="text-xs text-indigo-600">Buka →</button></div>`).join('')}</div>` : `<div class="mt-3 p-8 text-center border border-dashed rounded-xl text-sm text-slate-500">Belum ada aktivitas terbaru. Mulai dengan buat shortlink pertama.</div>`}
+        </div>
+
+        <div class="bg-white rounded-2xl border p-5">
+          <h3 class="font-semibold text-sm">Campaign terbaru</h3>
+          <div class="mt-3 space-y-2">
+            ${campaigns.slice(0,3).map(c=>`<div class="p-3 border rounded-xl flex justify-between items-center"><div><div class="font-medium text-sm">${c.name}</div><div class="text-xs text-slate-500">${c.slug}</div></div><button onclick="window.navigateTo('#/campaigns/${c.id}')" class="text-xs px-3 py-1 bg-white border rounded-full">Detail</button></div>`).join('') || '<div class="text-sm text-slate-400">Belum ada campaign. Buat campaign lengkap dalam 5 langkah.</div>'}
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div id="overview-checklist"></div>
+        <div class="bg-white rounded-2xl border p-5">
+          <h3 class="font-semibold text-sm">Aksi cepat</h3>
+          <div class="mt-3 grid gap-2">
+            <button onclick="window.navigateTo('#/shortlinks')" class="w-full text-left p-3 border rounded-xl hover:bg-slate-50"><div class="text-sm font-medium">🔗 Buat shortlink</div><div class="text-xs text-slate-500">3 langkah, dapat link + QR</div></button>
+            <button onclick="window.navigateTo('#/microsites/builder')" class="w-full text-left p-3 border rounded-xl hover:bg-slate-50"><div class="text-sm font-medium">🌐 Buat microsite</div><div class="text-xs text-slate-500">Dari template, publish 2 menit</div></button>
+            <button onclick="window.navigateTo('#/forms/builder')" class="w-full text-left p-3 border rounded-xl hover:bg-slate-50"><div class="text-sm font-medium">📋 Buat form</div><div class="text-xs text-slate-500">Drag-drop, dapat respons</div></button>
+            <button onclick="window.navigateTo('#/analytics')" class="w-full text-left p-3 border rounded-xl hover:bg-slate-50"><div class="text-sm font-medium">📊 Lihat analitik</div><div class="text-xs text-slate-500">Funnel QR→klik→view→submission</div></button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border p-5">
+          <h3 class="font-semibold text-sm">Aktivitas terbaru</h3>
+          <div class="mt-3 space-y-2 text-xs">
+            ${storage.getAuditLogs().slice(0,5).map(l=>`<div class="flex gap-2"><span class="text-slate-400">${l.created_at.slice(11,16)}</span><span><b>${l.actor_name}</b> ${l.action}</span></div>`).join('') || '<div class="text-slate-400">Belum ada aktivitas</div>'}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  import('./onboarding/checklist.js').then(m=> m.renderChecklist('overview-checklist'));
+}
+
+function renderCampaignDetail(id) {
+  const container = document.getElementById('main-content');
+  const camp = storage.getCampaigns().find(c=>c.id===id);
+  if (!camp) { container.innerHTML='<div class="p-8 text-center">Campaign tidak ditemukan</div>'; return; }
+  const wsId = camp.workspace_id;
+  const links = storage.getLinks().filter(l=>l.project_id===id);
+  const microsites = storage.getMicrosites().filter(m=>m.project_id===id);
+  const forms = storage.getForms().filter(f=>f.project_id===id);
+  const qrs = storage.getQrCodes().filter(q=>q.project_id===id);
+
+  document.getElementById('page-header').innerHTML = `<div><h1 class="text-xl font-bold">${camp.name}</h1><p class="text-sm text-slate-500">${camp.description||''} • /${camp.slug}</p></div>`;
+
+  container.innerHTML = `
+    <div class="grid md:grid-cols-4 gap-3 mb-6">
+      <div class="bg-white rounded-2xl border p-4 text-center"><div class="text-xs text-slate-500">Microsite</div><div class="text-xl font-bold">${microsites.length}</div></div>
+      <div class="bg-white rounded-2xl border p-4 text-center"><div class="text-xs text-slate-500">Shortlinks</div><div class="text-xl font-bold">${links.length}</div></div>
+      <div class="bg-white rounded-2xl border p-4 text-center"><div class="text-xs text-slate-500">Forms</div><div class="text-xl font-bold">${forms.length}</div></div>
+      <div class="bg-white rounded-2xl border p-4 text-center"><div class="text-xs text-slate-500">QR Codes</div><div class="text-xl font-bold">${qrs.length}</div></div>
+    </div>
+    <div class="grid lg:grid-cols-3 gap-4">
+      <div class="lg:col-span-2 space-y-4">
+        <div class="bg-white rounded-2xl border p-5"><h3 class="font-semibold text-sm">Microsite</h3><div class="mt-2 space-y-2">${microsites.map(m=>`<div class="p-2 border rounded-xl flex justify-between"><span class="text-sm">/m/${m.slug} - ${m.title}</span><span class="text-xs">${m.status}</span></div>`).join('')||'Belum ada'}</div></div>
+        <div class="bg-white rounded-2xl border p-5"><h3 class="font-semibold text-sm">Forms</h3><div class="mt-2 space-y-2">${forms.map(f=>`<div class="p-2 border rounded-xl flex justify-between"><span class="text-sm">/f/${f.slug} - ${f.title}</span><span class="text-xs">${f.responses||0} respons</span></div>`).join('')||'Belum ada'}</div></div>
+        <div class="bg-white rounded-2xl border p-5"><h3 class="font-semibold text-sm">Shortlinks</h3><div class="mt-2 space-y-2">${links.map(l=>`<div class="p-2 border rounded-xl flex justify-between"><span class="text-sm font-mono">tautan.id/${l.slug}</span><span class="text-xs">${l.clicks||0} klik</span></div>`).join('')||'Belum ada'}</div></div>
+      </div>
+      <div class="space-y-4">
+        <div class="bg-white rounded-2xl border p-5"><h3 class="font-semibold text-sm">QR Codes</h3><div class="mt-2 space-y-2">${qrs.map(q=>`<div class="p-2 border rounded-xl"><div class="text-xs">${q.resource_type} • ${q.scans||0} scan</div></div>`).join('')||'Belum ada'}</div></div>
+        <div id="campaign-analytics"></div>
+      </div>
+    </div>
+  `;
+  renderAnalytics('campaign-analytics', id);
+}
+
+function renderFormResponses(formId) {
+  const container = document.getElementById('main-content');
+  const form = storage.getForms().find(f=>f.id===formId);
+  const responses = storage.get('form_responses', []).filter(r=>r.form_id===formId);
+  container.innerHTML = `
+    <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-bold">Respons: ${form?.title}</h2><button onclick="window.exportResponses('${formId}')" class="px-3 py-1.5 bg-white border rounded-xl text-xs">Export CSV</button></div>
+    <div class="bg-white rounded-2xl border overflow-auto">
+      <table class="w-full text-sm"><thead><tr class="bg-slate-50 text-xs text-slate-500"><th class="p-3 text-left">#</th><th class="p-3 text-left">Jawaban</th><th class="p-3 text-left">Status</th><th class="p-3 text-left">Waktu</th></tr></thead><tbody>
+        ${responses.map(r=>`<tr class="border-t"><td class="p-3">${r.response_number}</td><td class="p-3"><pre class="text-xs bg-slate-50 p-2 rounded">${JSON.stringify(r.answers,null,2)}</pre></td><td class="p-3"><span class="px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-xs">${r.status}</span></td><td class="p-3 text-xs">${r.created_at.slice(0,19)}</td></tr>`).join('') || '<tr><td colspan="4" class="p-8 text-center text-slate-400">Belum ada respons. Bagikan form via shortlink & QR.</td></tr>'}
+      </tbody></table>
+    </div>
+  `;
+  window.exportResponses = (id) => {
+    const resps = storage.get('form_responses', []).filter(r=>r.form_id===id);
+    const csv = 'data:text/csv;charset=utf-8,' + 'response_number,status,answers,created_at\\n' + resps.map(r=>`${r.response_number},${r.status},"${JSON.stringify(r.answers).replace(/"/g,'""')}",${r.created_at}`).join('\\n');
+    const link = document.createElement('a'); link.setAttribute('href', encodeURI(csv)); link.setAttribute('download', 'responses_'+id+'.csv'); document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    showToast('Export CSV');
+  };
+}
+
+function renderAdmin() {
+  const container = document.getElementById('main-content');
+  const user = storage.getCurrentUser();
+  if (!user?.is_superadmin) { container.innerHTML='<div class="p-8 text-center">Hanya super admin dapat akses Admin Center</div>'; return; }
+  const logs = storage.getAuditLogs();
+  const reserved = ['admin','api','login','dashboard','p','m','f','qr'];
+  container.innerHTML = `
+    <h2 class="text-lg font-bold mb-4">Admin Center — Moderasi & Keamanan</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-white rounded-2xl border p-5"><h3 class="font-semibold text-sm">Reserved Slugs</h3><div class="mt-2 flex flex-wrap gap-1">${reserved.map(s=>`<span class="px-2 py-1 bg-red-50 text-red-700 rounded-full text-xs">${s}</span>`).join('')}</div><div class="mt-3"><input id="new-reserved" placeholder="Tambah reserved slug" class="w-full px-3 py-2 border rounded-xl text-sm"><button onclick="window.addReserved()" class="mt-2 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-xs">Tambah</button></div></div>
+      <div class="bg-white rounded-2xl border p-5"><h3 class="font-semibold text-sm">Audit Log (${logs.length})</h3><div class="mt-2 max-h-64 overflow-auto space-y-1">${logs.slice(0,20).map(l=>`<div class="text-xs p-2 bg-slate-50 rounded"><span class="font-mono">${l.created_at.slice(0,19)}</span> <b>${l.actor_name}</b> ${l.action} ${l.target} ${l.metadata.reason?`reason:${l.metadata.reason}`:''}</div>`).join('')||'No logs'}</div></div>
+      <div class="bg-white rounded-2xl border p-5"><h3 class="font-semibold text-sm">Abuse Reports</h3><div class="text-sm text-slate-500 mt-2">Belum ada laporan. User dapat report shortlink/microsite/form.</div></div>
+      <div class="bg-white rounded-2xl border p-5"><h3 class="font-semibold text-sm">System Settings</h3><div class="mt-2 space-y-2 text-xs"><div class="flex justify-between"><span>Demo Mode</span><span class="font-medium">${featureFlags.demoMode.enabled?'Enabled':'Disabled'}</span></div><div class="flex justify-between"><span>File Upload Kill Switch</span><span class="font-medium">${featureFlags.riskyFeatures.fileUpload.killSwitch?'ON':'OFF'}</span></div><div class="flex justify-between"><span>Custom Domain</span><span class="font-medium">${featureFlags.riskyFeatures.customDomain.enabled?'Enabled':'Disabled'}</span></div></div></div>
+    </div>
+  `;
+  window.addReserved = () => { const v=document.getElementById('new-reserved').value; if(v) { showToast('Reserved slug ditambahkan: '+v); document.getElementById('new-reserved').value=''; } };
+}
+
+function renderSettings() {
+  const container = document.getElementById('main-content');
+  const settings = storage.getSettings();
+  container.innerHTML = `
+    <h2 class="text-lg font-bold mb-4">Settings</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-white rounded-2xl border p-5"><h3 class="font-semibold text-sm">Default Settings</h3><div class="mt-3 space-y-2 text-sm"><div class="flex justify-between"><span class="text-slate-500">Bahasa</span><span>${settings?.language}</span></div><div class="flex justify-between"><span class="text-slate-500">Timezone</span><span>${settings?.timezone}</span></div><div class="flex justify-between"><span class="text-slate-500">Tema</span><span>${settings?.theme}</span></div><div class="flex justify-between"><span class="text-slate-500">Date Format</span><span>${settings?.dateFormat}</span></div><div class="flex justify-between"><span class="text-slate-500">Idle Timeout</span><span>${settings?.microsite?.idleTimeoutSeconds||60}s</span></div></div></div>
+      <div class="bg-white rounded-2xl border p-5"><h3 class="font-semibold text-sm">Onboarding</h3><div class="mt-3 space-y-2"><button onclick="window.resetOnboarding()" class="w-full px-3 py-2 bg-white border rounded-xl text-sm text-left">🔄 Reset onboarding</button><button onclick="window.resetHelpBubbles()" class="w-full px-3 py-2 bg-white border rounded-xl text-sm text-left">💡 Reset hints & help bubbles</button><button onclick="window.clearData()" class="w-full px-3 py-2 bg-red-50 text-red-600 border border-red-100 rounded-xl text-sm text-left">🗑️ Clear semua data (demo)</button></div></div>
+      <div class="bg-white rounded-2xl border p-5 md:col-span-2"><h3 class="font-semibold text-sm">Feature Flags</h3><pre class="mt-2 bg-slate-50 p-3 rounded-xl text-[11px] overflow-auto">${JSON.stringify(featureFlags,null,2)}</pre><div class="mt-2 text-[11px] text-slate-400">Flags harus punya owner, purpose, creation, expiration, cleanup plan. Review mingguan, hapus setelah rollout.</div></div>
+    </div>
+  `;
+  window.resetOnboarding = () => {
+    storage.setOnboarding({ completed: [], dismissed: [] });
+    localStorage.removeItem('tautan_help_dismissed_overview-quick-create');
+    Object.keys(localStorage).forEach(k=>{ if(k.startsWith('tautan_guide_')) localStorage.removeItem(k); });
+    showToast('Onboarding direset');
+  };
+  window.resetHelpBubbles = () => {
+    import('./shared/components/HelpBubble.js').then(m=> m.resetHelp());
+    showToast('Hints direset');
+  };
+  window.clearData = () => {
+    if (confirm('Hapus semua data demo?')) {
+      ['workspaces','links','microsites','forms','form_responses','qr_codes','campaigns','media_assets','analytics_events','audit_logs','current_workspace_id'].forEach(k=> storage.remove(k));
+      storage.remove('current_user');
+      storage.setSetupProgress(null);
+      location.reload();
+    }
+  };
+  window.resetOnboarding = window.resetOnboarding;
+  window.resetHelp = window.resetHelpBubbles;
+}
+
+checkSetup();
+</script>
+</body>
+</html>
