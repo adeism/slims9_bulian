@@ -54,6 +54,15 @@ if (!empty($chatbotConfig['admin']) && !empty($chatbotConfig['admin_history'])) 
 }
 
 /*
+ * Staff review: `System -> Chatbot review`.
+ * Fixes are written to files/chatbot/faq.local.php; the content file is
+ * never touched from the browser.
+ */
+if (!empty($chatbotConfig['admin']) && !empty($chatbotConfig['admin_overlay'])) {
+    $plugin->registerMenu('system', 'Chatbot review', __DIR__ . '/pages/review.php');
+}
+
+/*
  * Messaging channel webhook: WhatsApp Cloud, Telegram, or a local gateway
  * posting {phone, message}. Inert unless it is enabled *and* a token is set,
  * exactly like the CLI-Anything HTTP bridge.

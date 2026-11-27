@@ -39,6 +39,7 @@ final class SelfTest
         self::faq($cases);
         self::logs($cases);
         self::history($cases);
+        self::overlay($cases);
         self::channels($cases);
         self::stock($cases);
         self::http($cases);
@@ -1381,6 +1382,218 @@ final class SelfTest
             'history: a detail lookup finds exactly one conversation',
             count($detail) === 1 && $detail[0]['req'] === $first['rows'][0]['req'],
             json_encode(count($detail))
+        );
+    }
+
+
+    /**
+     * Staff corrections: overlay file, drafts, preview, audit, revert.
+     *
+     * @param array $cases
+     * @return void
+     */
+    private static function overlay(array &$cases)
+    {
+        $dir = self::tempDir('overlay');
+        $config = self::config();
+        $file = $dir . '/faq.local.php';
+        $config['faq'] = array_merge($config['faq'], [
+            'overlay' => true,
+            'overlay_file' => $file,
+        ]);
+
+        $overlay = new Overlay($config);
+
+        self::add(
+            $cases,
+            'overlay: a missing file is empty, not an error',
+            $overlay->load() === $overlay->emptyData()
+                && count(Faq::items($config)) === count(Faq::items(self::config()))
+        );
+
+        $sample = __DIR__ . '/faq.sample.php';
+        $sampleHash = sha1((string)file_get_contents($sample));
+
+        $result = $overlay->addKeyword('hours', 'buka sabtu', 'rina');
+        $match = Faq::match('buka sabtu', $config, 'id');
+
+        self::add(
+            $cases,
+            'overlay: a keyword added by staff is used immediately',
+            $result['ok'] === true
+                && !is_null($match)
+                && $match['id'] === 'hours'
+                && sha1((string)file_get_contents($sample)) === $sampleHash,
+            json_encode(['ok' => $result['ok'], 'match' => $match['id'] ?? null])
+        );
+
+        $raw = (string)file_get_contents($file);
+        self::add(
+            $cases,
+            'overlay: the file is a PHP array that outputs nothing when hit',
+            strpos($raw, '<?php') === 0
+                && strpos($raw, 'return array') !== false
+                && substr(rtrim($raw), -1) === ';'
+                && glob($dir . '/*.tmp-*') === [],
+            substr($raw, 0, 60)
+        );
+
+        self::add(
+            $cases,
+            'overlay: an unknown entry or a duplicate phrase is refused',
+            $overlay->addKeyword('nope', 'halo', 'rina')['ok'] === false
+                && $overlay->addKeyword('hours', 'buka sabtu', 'rina')['ok'] === false
+        );
+
+        $draft = $overlay->addEntry([
+            'id' => 'projector',
+            'question' => 'Peminjaman proyektor',
+            'keywords' => 'proyektor, lcd, projector',
+            'answer' => 'Ajukan permohonan di meja layanan dua hari sebelumnya.',
+        ], 'rina');
+
+        $draftMatch = Faq::match('proyektor', $config, 'id');
+        $itemsWithDraft = Faq::items($config);
+
+        self::add(
+            $cases,
+            'overlay: a new entry stays a draft and is not answered',
+            $draft['ok'] === true
+                && is_null($draftMatch)
+                && !in_array('projector', array_column($itemsWithDraft, 'id'), true),
+            json_encode(['ok' => $draft['ok'], 'match' => $draftMatch['id'] ?? null])
+        );
+
+        $overlay->setActive('projector', true, 'rina');
+        $activeMatch = Faq::match('proyektor', $config, 'id');
+        $overlay->setActive('projector', false, 'rina');
+        $backToDraft = Faq::match('proyektor', $config, 'id');
+        $overlay->setActive('projector', true, 'rina');
+
+        self::add(
+            $cases,
+            'overlay: activating an entry makes it live, drafting hides it again',
+            !is_null($activeMatch)
+                && $activeMatch['id'] === 'projector'
+                && ($activeMatch['answer'] ?? '') === 'Ajukan permohonan di meja layanan dua hari sebelumnya.'
+                && is_null($backToDraft),
+            json_encode(['active' => $activeMatch['id'] ?? null, 'draft' => $backToDraft['id'] ?? null])
+        );
+
+        $badEntry = $overlay->addEntry([
+            'id' => 'bad',
+            'question' => 'Tanpa jawaban',
+            'keywords' => 'kosong',
+            'answer' => '',
+        ], 'rina');
+        $badLink = $overlay->addEntry([
+            'id' => 'bad-link',
+            'question' => 'Tautan aneh',
+            'keywords' => 'aneh',
+            'answer' => 'Isi.',
+            'link' => 'javascript:alert(1)',
+        ], 'rina');
+        $duplicate = $overlay->addEntry([
+            'id' => 'projector',
+            'question' => 'Duplikat',
+            'keywords' => 'duplikat',
+            'answer' => 'Isi.',
+        ], 'rina');
+
+        self::add(
+            $cases,
+            'overlay: empty answers, script links and duplicate ids are refused',
+            $badEntry['ok'] === false && $badLink['ok'] === false && $duplicate['ok'] === false,
+            json_encode([$badEntry, $badLink, $duplicate])
+        );
+
+        $before = count(Faq::items($config));
+        $overlay->setHidden('donation', true, 'rina');
+        $hiddenMatch = Faq::match('donasi buku', $config, 'id');
+        $hiddenIds = array_column(Faq::items($config), 'id');
+        $overlay->setHidden('donation', false, 'rina');
+        $restoredMatch = Faq::match('donasi buku', $config, 'id');
+
+        self::add(
+            $cases,
+            'overlay: hiding removes an entry without deleting the content',
+            ($hiddenMatch['id'] ?? '') !== 'donation'
+                && !in_array('donation', $hiddenIds, true)
+                && ($restoredMatch['id'] ?? '') === 'donation'
+                && count(Faq::items($config)) === $before,
+            json_encode(['hidden' => $hiddenMatch['id'] ?? null, 'restored' => $restoredMatch['id'] ?? null])
+        );
+
+        $candidate = $overlay->load();
+        $candidate['keywords']['address'][] = 'kode pos';
+        $preview = $overlay->preview($candidate, 'kode pos', 'id');
+        $afterPreview = Faq::match('kode pos', $config, 'id');
+
+        self::add(
+            $cases,
+            'overlay: a preview answers without writing the change',
+            !is_null($preview) && $preview['id'] === 'address' && is_null($afterPreview),
+            json_encode(['preview' => $preview['id'] ?? null, 'saved' => $afterPreview['id'] ?? null])
+        );
+
+        $off = array_merge($config, ['faq' => array_merge($config['faq'], ['overlay' => false])]);
+        self::add(
+            $cases,
+            'overlay: switching the overlay off restores the plain content file',
+            is_null(Faq::match('kode pos', $off, 'id'))
+                && is_null(Faq::match('proyektor', $off, 'id'))
+                && !in_array('projector', array_column(Faq::items($off), 'id'), true)
+        );
+
+        $audit = $overlay->audit(20);
+        $actions = array_column($audit, 'action');
+
+        self::add(
+            $cases,
+            'overlay: every change is audited with who did it',
+            in_array('keyword', $actions, true)
+                && in_array('entry', $actions, true)
+                && in_array('activate', $actions, true)
+                && in_array('hide', $actions, true)
+                && ($audit[0]['actor'] ?? '') === 'rina',
+            json_encode(array_slice($actions, 0, 6))
+        );
+
+        $versionBefore = (int)($overlay->load()['version'] ?? 0);
+        $revert = $overlay->revert('rina');
+        $restored = $overlay->load();
+        $lastAudit = $overlay->audit(1);
+
+        self::add(
+            $cases,
+            'overlay: the previous version can be restored',
+            $revert['ok'] === true
+                && in_array('donation', (array)$restored['hidden'], true)
+                && ($lastAudit[0]['action'] ?? '') === 'revert'
+                && (int)$restored['version'] >= $versionBefore,
+            json_encode(['hidden' => $restored['hidden'], 'version' => $restored['version']])
+        );
+
+        $html = View::render(Actor::anonymous('guest'), 'opac', 'index.php?p=chatbot&action=ask', '/assets/', $config);
+        self::add(
+            $cases,
+            'overlay: staff-only pages are not reachable from the chat view',
+            strpos($html, 'faq.local.php') === false && strpos($html, 'chatbot-admin') === false
+        );
+
+        $guest = ['role' => Policy::GUEST];
+        $member = ['role' => Policy::MEMBER];
+        $staff = ['role' => Policy::STAFF];
+        $closed = array_merge($config, ['admin_overlay' => false]);
+
+        self::add(
+            $cases,
+            'overlay: only staff with the flag may correct answers',
+            Admin::can($staff, $config, 'admin_overlay') === true
+                && Admin::can($guest, $config, 'admin_overlay') === false
+                && Admin::can($member, $config, 'admin_overlay') === false
+                && Admin::can($staff, $closed, 'admin_overlay') === false
+                && Admin::can($staff, $config, 'made_up_flag') === false
         );
     }
 

@@ -506,3 +506,25 @@ table.chatbot-history small { color: #718096; }
     font-size: 11px;
     color: #718096;
 }
+
+.chatbot-admin__queue {
+    margin: 0;
+    padding-left: 18px;
+}
+.chatbot-admin__queue li {
+    margin-bottom: 10px;
+}
+.chatbot-admin__q { display: block; font-weight: 600; }
+.chatbot-admin__inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    margin-top: 4px;
+}
+.chatbot-admin__check {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 6px !important;
+}
+.chatbot-admin__filters textarea { font-size: 13px; }

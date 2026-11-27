@@ -69,7 +69,7 @@ final class Faq
      * @param array $config chatbot configuration
      * @return array
      */
-    public static function items(array $config = []): array
+    public static function items(array $config = [], ?array $overlay = null): array
     {
         $faq = self::settings($config);
 
@@ -77,19 +77,84 @@ final class Faq
             return [];
         }
 
+        $items = [];
+        $source = '';
+
         foreach (self::candidates($faq) as $path) {
-            $items = self::load($path);
+            $loaded = self::load($path);
 
-            if (!empty($items)) {
-                self::$source = $path;
-
-                return $items;
+            if (!empty($loaded)) {
+                $items = $loaded;
+                $source = $path;
+                break;
             }
         }
 
-        self::$source = '';
+        self::$source = $source;
 
-        return [];
+        if (empty($faq['overlay'])) {
+            return $items;
+        }
+
+        if (is_null($overlay)) {
+            $overlay = (new Overlay($config))->load();
+        }
+
+        return self::applyOverlay($items, $overlay);
+    }
+
+    /**
+     * Apply staff corrections: extra keywords, active local entries, hidden
+     * entries. Draft entries never reach a guest.
+     *
+     * @param array $items
+     * @param array $overlay
+     * @return array
+     */
+    private static function applyOverlay(array $items, array $overlay): array
+    {
+        $hidden = array_map('strval', (array)($overlay['hidden'] ?? []));
+        $keywords = (array)($overlay['keywords'] ?? []);
+        $out = [];
+
+        foreach ($items as $item) {
+            $id = (string)($item['id'] ?? '');
+
+            if ($id !== '' && in_array($id, $hidden, true)) {
+                continue;
+            }
+
+            if ($id !== '' && !empty($keywords[$id])) {
+                $merged = array_merge(
+                    (array)($item['keywords'] ?? []),
+                    array_map('strval', (array)$keywords[$id])
+                );
+                $item['keywords'] = array_values(array_unique(array_filter($merged, function ($phrase) {
+                    return trim((string)$phrase) !== '';
+                })));
+            }
+
+            $out[] = $item;
+        }
+
+        foreach ((array)($overlay['entries'] ?? []) as $entry) {
+            if (!is_array($entry) || (string)($entry['status'] ?? 'draft') !== 'active') {
+                continue;
+            }
+
+            $id = (string)($entry['id'] ?? '');
+
+            if ($id === '' || in_array($id, $hidden, true)) {
+                continue;
+            }
+
+            $entry['keywords'] = array_values(array_filter((array)($entry['keywords'] ?? []), function ($phrase) {
+                return trim((string)$phrase) !== '';
+            }));
+            $out[] = $entry;
+        }
+
+        return $out;
     }
 
     /**
@@ -100,9 +165,9 @@ final class Faq
      * @param string $locale
      * @return array|null the matched entry plus `alternatives`
      */
-    public static function match(string $message, array $config = [], string $locale = 'id'): ?array
+    public static function match(string $message, array $config = [], string $locale = 'id', ?array $overlay = null): ?array
     {
-        $items = self::items($config);
+        $items = self::items($config, $overlay);
 
         if (empty($items)) {
             return null;

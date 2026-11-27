@@ -245,17 +245,9 @@ final class History
      */
     public static function allowed(array $actor, array $config = []): bool
     {
-        $role = Intent::normaliseRole((string)($actor['role'] ?? 'guest'));
-
-        if ($role !== Policy::STAFF) {
-            return false;
-        }
-
         $config = $config === [] ? Config::all() : $config;
 
-        return !empty($config['enabled'])
-            && !empty($config['admin'])
-            && !empty($config['admin_history'])
+        return Admin::can($actor, $config, 'admin_history')
             && !empty($config['log']['enabled']);
     }
 
