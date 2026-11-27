@@ -36,6 +36,7 @@ final class SelfTest
         self::reads($cases);
         self::writes($cases);
         self::channels($cases);
+        self::stock($cases);
         self::http($cases);
 
         Config::override(null);
@@ -715,6 +716,78 @@ final class SelfTest
             @unlink($file);
         }
         @rmdir($dir);
+    }
+
+
+    /**
+     * A stock SLiMS 9 Bulian: the chatbot must reach a data service without
+     * a modified core file and without the Commands plugin being active.
+     *
+     * @param array $cases
+     * @return void
+     */
+    private static function stock(array &$cases)
+    {
+        $class = 'Commands\\Support\\CliAnything';
+        $resolved = null;
+
+        try {
+            $resolved = Engine::serviceClass();
+        } catch (\Throwable $error) {
+            $resolved = 'error: ' . $error->getMessage();
+        }
+
+        self::add(
+            $cases,
+            'stock: the data service resolves without the Commands plugin',
+            $resolved === $class && class_exists($class),
+            (string)$resolved
+        );
+
+        self::add(
+            $cases,
+            'stock: the envelope version survives the fallback',
+            class_exists($class) && (string)$class::SCHEMA_VERSION === '1.0',
+            class_exists($class) ? (string)$class::SCHEMA_VERSION : 'missing'
+        );
+
+        // The bundled copy only exists so a chatbot-only install keeps a data
+        // layer. When the Commands plugin is present the two files must be
+        // byte-identical, otherwise the tested behaviour is not what ships.
+        $vendored = __DIR__ . '/vendor/CliAnything.php';
+        $native = dirname(__DIR__, 3) . '/plugins/Commands/Support/CliAnything.php';
+        $inSync = is_file($vendored);
+
+        if ($inSync && is_file($native)) {
+            $inSync = sha1_file($vendored) === sha1_file($native);
+        }
+
+        self::add(
+            $cases,
+            'stock: the bundled service copy is present and in sync',
+            $inSync,
+            $inSync ? 'identical or standalone' : 'out of sync with plugins/Commands/Support/CliAnything.php'
+        );
+
+        // No database here: a greeting must answer from the rule table, which
+        // proves the service is resolved lazily and never at page load.
+        $_SESSION = [];
+        RateLimit::reset();
+        $engine = new Engine(Actor::anonymous('guest'), self::config());
+
+        $greeting = null;
+        try {
+            $greeting = $engine->handle('halo');
+        } catch (\Throwable $error) {
+            $greeting = ['ok' => false, 'error' => ['code' => 'THROWN', 'message' => $error->getMessage()]];
+        }
+
+        self::add(
+            $cases,
+            'stock: a greeting answers without touching the database',
+            !empty($greeting['ok']) && isset($greeting['reply']['text']),
+            json_encode($greeting['error'] ?? ($greeting['meta'] ?? []))
+        );
     }
 
     /**

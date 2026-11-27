@@ -936,12 +936,7 @@ final class Engine
     private function service()
     {
         if (is_null($this->service)) {
-            $class = 'Commands\\Support\\CliAnything';
-
-            if (!class_exists($class)) {
-                throw new \RuntimeException('CLI-Anything service is not available (plugins/Commands/Support missing).');
-            }
-
+            $class = self::serviceClass();
             $this->service = $class::instance();
         }
 
@@ -1201,17 +1196,64 @@ final class Engine
     }
 
     /**
+     * Locate the data service, in order of preference:
+     *
+     *   1. `Commands\Support\CliAnything` already loaded (Commands plugin).
+     *   2. The same file at `plugins/Commands/Support/CliAnything.php`, even
+     *      when that plugin is not activated -- the file alone is enough.
+     *   3. The bundled copy in `Support/vendor/`, so a chatbot-only install
+     *      on an untouched SLiMS 9 Bulian still has a data layer.
+     *
+     * Nothing here requires a modified core file, and no core file is loaded
+     * twice when the Commands plugin is present.
+     *
+     * @return string fully qualified class name
+     */
+    public static function serviceClass(): string
+    {
+        $class = 'Commands\\Support\\CliAnything';
+
+        if (class_exists($class)) {
+            return $class;
+        }
+
+        $ds = DIRECTORY_SEPARATOR;
+        $root = defined('SB') ? SB : dirname(__DIR__, 3) . $ds;
+
+        $native = rtrim($root, '/\\') . $ds . 'plugins' . $ds . 'Commands' . $ds . 'Support' . $ds . 'CliAnything.php';
+        if (is_file($native)) {
+            require_once $native;
+        }
+
+        if (!class_exists($class)) {
+            $vendored = __DIR__ . $ds . 'vendor' . $ds . 'CliAnything.php';
+            if (is_file($vendored)) {
+                require_once $vendored;
+            }
+        }
+
+        if (!class_exists($class)) {
+            throw new \RuntimeException(
+                'The chatbot cannot reach a data service: Commands\Support\CliAnything is missing and the bundled copy is gone.'
+            );
+        }
+
+        return $class;
+    }
+
+    /**
      * @return string
      */
     private function schema(): string
     {
-        if (class_exists('Commands\\Support\\CliAnything')) {
-            return (string)\Commands\Support\CliAnything::SCHEMA_VERSION;
+        try {
+            $class = self::serviceClass();
+
+            return (string)$class::SCHEMA_VERSION;
+        } catch (\Throwable $error) {
+            return '1.0';
         }
-
-        return '1.0';
     }
-
     /**
      * @param mixed $value
      * @return string

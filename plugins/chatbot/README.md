@@ -62,6 +62,39 @@ overwrites the member id with `$_SESSION['mid']` before calling the service.
    php index.php chatbot:ask "pinjaman terlambat"
    ```
 
+
+### Stock SLiMS, no core changes
+
+The chatbot is additive: it registers a menu and an API hook through the
+plugin API that ships with SLiMS 9 Bulian. No file outside `plugins/` and
+`config/` is touched, and nothing has to be applied to `admin/`, `lib/` or
+`index.php`.
+
+```bash
+# from the SLiMS root of a pristine 9 Bulian checkout
+cp -r /path/to/repo/plugins/chatbot plugins/
+cp /path/to/repo/config/chatbot.sample.php config/chatbot.php
+php index.php plugin:list --type=all && php index.php plugin:activate <id>
+```
+
+A chatbot-only install still has a data layer: `Support/vendor/CliAnything.php`
+is a copy of the CLI-Anything service, loaded only when
+`plugins/Commands/Support/CliAnything.php` is absent (see
+`Support/vendor/README.md`). Writes stay closed until you add
+`config/cli_anything.php` with `allow_write` on — that file is read by the
+service itself, so both surfaces obey the same switch:
+
+```php
+<?php
+return ['allow_write' => true, 'user_id' => 1, 'user_name' => 'Chatbot'];
+```
+
+Requirements are the stock ones: PHP 7.4+ (8.x fine), MySQL/MariaDB with the
+SLiMS 9 schema, and the bundled `simbio2`/`lib` classes. The chatbot reads
+`biblio`, `item`, `member`, `loan`, `fines` — tables every installation has —
+and writes through SLiMS' own circulation classes, so loan rules, receipts
+and `system_log` entries are the ones the admin module produces.
+
 ## What it understands
 
 Deterministic rules, both Indonesian and English. No model, no network call,
@@ -277,7 +310,7 @@ store — useful to reproduce what a gateway reported.
 ## Console equivalents
 
 ```bash
-php index.php chatbot:selftest                 # 71 offline checks, no DB
+php index.php chatbot:selftest                 # 75 offline checks, no DB
 php index.php chatbot:ask "pinjaman terlambat" # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
@@ -336,7 +369,10 @@ plugins/chatbot/
 │   ├── Str.php                 mbstring fallback
 │   ├── Config.php              defaults + config/chatbot.php
 │   ├── TestService.php         fake CLI-Anything for offline tests
-│   └── SelfTest.php            71 assertions
+│   ├── vendor/
+│   │   ├── CliAnything.php     copy of the service, stock-install fallback
+│   │   └── README.md           why it exists and how to re-sync it
+│   └── SelfTest.php            75 assertions
 ├── pages/
 │   ├── opac.php                ?p=chatbot (guest + member)
 │   └── admin.php               System -> Chatbot (staff)
@@ -357,14 +393,18 @@ The suite covers the intent table (Indonesian + English), role policy,
 confirmation replay/expiry/binding, rate limits, the engine against a fake
 service, the HTTP pipeline (CSRF, empty message, disabled plugin), the messaging
 channel (payload normalization, allow-list identity, guest/member/staff
-replies, YA/BATAL flow, replay, throttle, stale action, guarded store) and the
-escaping of the rendered shell.
+replies, YA/BATAL flow, replay, throttle, stale action, guarded store), the
+stock-install path (service resolution without the Commands plugin, envelope
+version, bundled copy in sync, greeting without a database) and the escaping
+of the rendered shell.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | No *Chatbot* menu in OPAC | plugin not active | `php index.php plugin:list --type=all`, then `plugin:activate <id>` |
+| `UNEXPECTED_ERROR` on every question, page still renders | the bundled service file is missing from `Support/vendor/` | re-copy `plugins/chatbot/`; `php plugins/chatbot/tests/run.php` checks for it |
+| *"Writes are disabled"* on a stock install | `config/cli_anything.php` absent or `allow_write` off | create the file, turn `allow_write` on |
 | "Asisten perpustakaan sedang dimatikan" | `enabled`/`opac`/`admin` is false | edit `config/chatbot.php` |
 | Every send says the session expired | CSRF token missing (page cached, or cookies blocked) | reload the page; check the session driver |
 | Confirm button answers "expired" | slower than `confirm_ttl` | ask again; the plan is rebuilt |

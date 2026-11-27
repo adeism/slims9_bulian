@@ -108,6 +108,36 @@ Aturan yang perlu diingat:
    **dan** `allow_admin_write` di `config/chatbot.php`, lalu coba satu transaksi
    pada data uji.
 
+### Dipasang di SLiMS yang belum diubah
+
+Chatbot tidak menuntut perubahan kode inti. Ia hanya menambah berkas di
+`plugins/chatbot/` dan `config/`, lalu memakai API plugin bawaan SLiMS 9:
+menu OPAC/System dan kait `custom_api_route` yang sudah dijalankan
+`api/v1/routes.php`.
+
+Artinya Anda bisa memasangnya di instalasi SLiMS 9 Bulian yang masih asli:
+
+```bash
+cp -r plugins/chatbot /var/www/slims/plugins/
+cp config/chatbot.sample.php /var/www/slims/config/chatbot.php
+cd /var/www/slims && php index.php plugin:list --type=all
+```
+
+Bila hanya folder chatbot yang disalin, plugin tetap punya lapisan data:
+salinan layanan CLI-Anything disertakan di `Support/vendor/` dan hanya dipakai
+kalau `plugins/Commands/Support/CliAnything.php` tidak ada. Penulisan transaksi
+tetap tertutup sampai Anda menambahkan `config/cli_anything.php`:
+
+```php
+<?php
+return ['allow_write' => true];
+```
+
+Persyaratannya sama dengan SLiMS sendiri: PHP 7.4 atau lebih baru, MySQL/
+MariaDB dengan skema SLiMS 9, dan tabel `biblio`, `item`, `member`, `loan`,
+`fines` yang selalu ada. Penulisan memakai kelas sirkulasi milik SLiMS, jadi
+aturan pinjam, struk, dan catatan `system_log` sama seperti dari area admin.
+
 ### Lewat WhatsApp atau Telegram
 
 Pertanyaan tidak harus datang dari halaman web. Mesin yang sama bisa menjawab

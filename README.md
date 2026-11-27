@@ -200,7 +200,7 @@ click, or "yes" for a different plan cannot commit anything.
 cp config/chatbot.sample.php config/chatbot.php
 php index.php plugin:list --type=all && php index.php plugin:activate <id>
 
-php index.php chatbot:selftest                      # 71 offline checks
+php index.php chatbot:selftest                      # 75 offline checks
 php index.php chatbot:ask "pinjaman terlambat"      # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
@@ -212,6 +212,13 @@ with `X-Chatbot-Token` — so WhatsApp or Telegram can talk to it; senders are
 mapped to a member id or a staff uid by an explicit allow-list, and everyone
 else is a guest. Full details, role matrix, payload shapes and the JSON
 contract: `plugins/chatbot/README.md`.
+
+Nothing in the core is patched: the chatbot uses the stock plugin API
+(`registerMenu`, and the `custom_api_route` hook that `api/v1/routes.php`
+already executes), the stock circulation classes for writes, and the stock
+`system_log` for audit. A chatbot-only copy on a pristine SLiMS 9 Bulian still
+works — it carries the service as `Support/vendor/CliAnything.php` and loads it
+only when `plugins/Commands/Support/CliAnything.php` is absent.
 
 ### Recipes
 
@@ -285,7 +292,7 @@ php plugins/chatbot/tests/run.php     # standalone runner
 php index.php chatbot:selftest        # inside SLiMS, same suite
 ```
 
-71 assertions cover the Indonesian/English intent table, role policy (guest,
+75 assertions cover the Indonesian/English intent table, role policy (guest,
 member, staff), confirmation replay/expiry/session binding, rate limits, the
 engine against a fake service, the HTTP pipeline (CSRF, empty message, disabled
 plugin), the WhatsApp/Telegram channel (payload shapes, allow-list identity,
