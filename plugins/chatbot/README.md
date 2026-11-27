@@ -536,7 +536,7 @@ php index.php chatbot:eval --sweep    # precision/recall for thresholds 0.40-0.8
 CHATBOT_E2E=1 php index.php chatbot:e2e   # read-only dialogues against the live DB
 ```
 
-* `tests/corpus.php` holds ~110 phrasings in Indonesian and English for the
+* `tests/corpus.php` holds 122 phrasings in Indonesian and English for the
   three roles, including negatives that must never be answered by the FAQ
   ("pinjamkan B00001 ke anggota 123", "pinjamkan…" as a guest, catalogue
   searches, member questions).

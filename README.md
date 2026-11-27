@@ -246,7 +246,7 @@ CSV, the week's numbers), **review** (unanswered and thumbs-down queue; add a
 keyword, create a draft entry, hide one, block a question, preview before
 saving, restore the previous version) and **rules** (blocked questions and
 forbidden answers, with an over-blocking count). Corrections land in an overlay
-file, never in `config/chatbot.faq.php`. `chatbot:eval` runs a ~110-sentence
+file, never in `config/chatbot.faq.php`. `chatbot:eval` runs a 122-sentence
 corpus in both languages and gates on accuracy, typo tolerance, threshold
 stability, language parity and the render contract; `chatbot:e2e` replays
 read-only dialogues against the live database.

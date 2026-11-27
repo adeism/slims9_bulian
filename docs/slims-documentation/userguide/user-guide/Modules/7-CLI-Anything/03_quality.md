@@ -69,7 +69,7 @@ sebelumnya sampai administrator menyalakannya.
 
 ### Angka, bukan kesan
 
-* `php index.php chatbot:eval` — akurasi pada korpus ~110 kalimat (Indonesia
+* `php index.php chatbot:eval` — akurasi pada korpus 122 kalimat (Indonesia
   dan Inggris, tiga peran), toleransi salah ketik, paritas bahasa, kontrak
   tampilan. Berakhir dengan kode 1 bila di bawah target.
 * `php index.php chatbot:eval --sweep` — tabel precision/recall ambang FAQ,

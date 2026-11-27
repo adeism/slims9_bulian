@@ -148,4 +148,19 @@ return [
     ['who am i', 'member', 'intent:whoami', 'smalltalk-en'],
     ['book #12', 'guest', 'intent:biblio.get', 'catalogue-en'],
     ['item B00001', 'staff', 'intent:item.get', 'catalogue-en'],
+
+    // ---- Additions from the second review pass ---------------------
+    ['di mana perpustakaan', 'guest', 'faq:address', 'faq'],
+    ['nomor telepon perpustakaan', 'guest', 'faq:phone', 'faq'],
+    ['berapa iuran anggota', 'guest', 'faq:membership-fee', 'faq'],
+    ['cara memperpanjang pinjaman', 'member', 'faq:renew', 'faq'],
+    ['bisa reservasi buku', 'member', 'faq:reserve', 'faq'],
+    ['fasilitas apa saja di perpustakaan', 'guest', 'faq:facilities', 'faq'],
+    ['bagaimana cara menyumbang buku', 'guest', 'faq:donation', 'faq'],
+    ['surel pustakawan', 'guest', 'faq:email', 'faq'],
+    ['kartu anggota saya hilang', 'member', 'faq:lost-card', 'faq'],
+    ['daftar pinjaman saya', 'member', 'intent:my.loans', 'member'],
+    ['ringkasan koleksi', 'staff', 'intent:report.summary', 'staff'],
+    ['jadwal kereta malam', 'guest', 'no-faq', 'negative'],
+    ['cuaca hari ini bagaimana', 'guest', 'no-faq', 'negative'],
 ];

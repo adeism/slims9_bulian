@@ -254,7 +254,7 @@ tidak mengubah perilaku sampai administrator menyalakannya.
 
 ### Mengukur mutu
 
-* `php index.php chatbot:eval` menjalankan korpus ~110 kalimat (Indonesia dan
+* `php index.php chatbot:eval` menjalankan korpus 122 kalimat (Indonesia dan
   Inggris, tiga peran) dan mencetak akurasi, toleransi salah ketik, paritas
   bahasa, dan kontrak tampilan. Gagal (exit code 1) bila di bawah target.
 * `php index.php chatbot:eval --sweep` menampilkan precision/recall untuk

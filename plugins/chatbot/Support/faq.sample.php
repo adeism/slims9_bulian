@@ -150,8 +150,9 @@ return [
         'question' => 'Ruang baca dan wifi',
         'question_en' => 'Reading room and wifi',
         'keywords' => [
-            'wifi', 'wi-fi', 'internet', 'ruang baca', 'tempat baca', 'ac', 'listrik',
-            'reading room', 'study', 'power outlet',
+            'fasilitas', 'sarana', 'facilities', 'wifi', 'wi-fi', 'internet',
+            'ruang baca', 'tempat baca', 'ruang diskusi', 'diskusi', 'ac', 'listrik',
+            'reading room', 'study', 'power outlet', 'discussion room',
         ],
         'answer' => 'Ruang baca ber-AC tersedia di lantai 2 dengan 40 kursi dan colokan listrik. Wifi gratis: SSID "Perpustakaan", kata sandi di meja layanan.',
         'answer_en' => 'An air-conditioned reading room is on the second floor with 40 seats and power outlets. Free wifi: SSID "Perpustakaan", password at the service desk.',
@@ -195,8 +196,9 @@ return [
         'question_en' => 'Lost membership card',
         'keywords' => [
             'kartu hilang', 'kartu anggota hilang', 'kehilangan kartu', 'kartu rusak',
-            'kartu anggota rusak', 'ganti kartu', 'lost card', 'lost membership card',
-            'replace card', 'card damaged',
+            'kartu anggota rusak', 'ganti kartu', 'kartu anggota saya hilang',
+            'kartu saya hilang', 'kehilangan kartu anggota', 'lost card',
+            'lost membership card', 'replace card', 'card damaged',
         ],
         'answer' => 'Lapor ke meja layanan dengan membawa KTP. Kartu lama diblokir dan kartu pengganti dicetak dengan biaya Rp5.000.',
         'answer_en' => 'Report it at the service desk with your ID card. The old card is blocked and a replacement is printed for Rp5,000.',
