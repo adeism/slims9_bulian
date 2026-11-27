@@ -2,8 +2,14 @@
 
 A question-and-answer assistant for SLiMS 9 Bulian, built **on top of the
 CLI-Anything service** — the same class behind `php index.php clianything:*`
-and the HTTP bridge. The chat owns no SQL and no circulation rule: it routes
-a message to a command, and renders the answer.
+and the HTTP bridge. The chat layer owns no SQL and no circulation rule: it
+routes a message to a command and renders the answer. The service itself is
+bundled (byte-for-byte) so a chatbot-only install works, but it is never a
+second implementation.
+
+If you are deciding whether to install it, read
+[Before you install](#before-you-install-impact-benefits-risks) first: what it
+adds, what it does not touch, what you gain, and what to watch.
 
 Because of that, the three guards you already configured keep working:
 
@@ -12,6 +18,81 @@ Because of that, the three guards you already configured keep working:
 | `allow_write` | `config/cli_anything.php` | a closed gate means the chat can only *plan* a transaction |
 | `allow_bulk` + automatic backup | CLI-Anything | multi-item checkout still takes a dump first |
 | audit trail | `system_log` (`location = CLI-Anything`) | every commit is recorded, now with the real staff/member id |
+
+## Before you install: impact, benefits, risks
+
+### What gets added
+
+| Path | Kind | Why |
+| --- | --- | --- |
+| `plugins/chatbot/` | new directory | the plugin: two pages, assets, support classes, bundled service copy, tests |
+| `config/chatbot.php` | new file (copied from the sample) | switches, role gates, search ranking, webhook |
+| `config/cli_anything.php` | optional | already part of CLI-Anything; only needed to allow writes |
+| `SB files/chatbot/` | created at runtime, only if the webhook is on | per-sender pending actions and counters |
+| `system_log` | new rows | one per committed write, through the existing audit path |
+| `biblio`, `item`, `member`, `loan`, `fines` | read; written only by gated circulation | no new tables, no new columns |
+
+Nothing else. No file in `admin/`, `lib/`, `sysconfig.inc.php` or `index.php` is
+edited, and the plugin never runs `ALTER TABLE`: an optional FULLTEXT index is
+*detected* if you added one yourself, never created.
+
+### What appears in the UI
+
+* OPAC menu **Chatbot** (`index.php?p=chatbot`) — visible to guests and members.
+* **System → Chatbot** in the admin area — staff only, behind the normal session
+  check.
+* `POST index.php?p=api/chatbot/v1/message` — **only** when `channel.enabled` is
+  true *and* `channel.token` is filled. Off by default, so an untouched install
+  exposes no extra route at all.
+
+### Requirements
+
+Stock SLiMS 9 Bulian: PHP 7.4 or newer (8.x fine), MySQL/MariaDB with the
+normal schema, and a working PHP session (the chat posts JSON to the same
+session as the page). No Composer, no Node, no Python, no external service, no
+LLM API key.
+
+### Benefits
+
+| Benefit | What it means in practice |
+| --- | --- |
+| Answers without a terminal | the same commands a librarian would type, reachable from a browser or WhatsApp |
+| Role-correct by construction | the role comes from `$_SESSION`, never from the request; a member cannot read another member's record with any phrasing |
+| No training, no cost per question | deterministic rules; nothing leaves your server |
+| Search that tolerates real typing | typo fallback, "did you mean", field-weighted relevance, popularity tie-break (`sejarh` → *Sejarah Indonesia Modern*) |
+| Discoverability of the collection | "buku populer" / "buku terbaru" turn circulation history into a reading list |
+| Gated writes with an audit trail | two-step confirmation, `allow_write` respected, one `system_log` row per commit attributed to the real user |
+| One engine, three surfaces | console, HTTP bridge and chat share the service, so behaviour cannot drift |
+| Removable | disabling the plugin restores the previous UI; nothing in the core was patched |
+
+### Risks, and what already mitigates them
+
+| Risk | What could happen | Mitigation (default) |
+| --- | --- | --- |
+| A write on live data is wrong | a wrong checkout, check-in or renewal is committed | `allow_admin_write = false` and `allow_write = false` by default; the first answer is always a dry run; confirmation is single-use and expires in 180 s; multi-record writes need `allow_bulk` **and** a backup; every commit is audited |
+| A member reads another member's data | a crafted message asks for `anggota 999` | `Policy::scope()` overwrites the member id server-side for `my.*`; the service receives the session id only |
+| PII leaks through the chat or a WhatsApp thread | e-mail, phone, address visible in a forwarded message | `memberGet()` is always called with redaction; there is no `reveal` path in the chat |
+| The webhook is exposed | anyone posting to the URL gets answers | off unless enabled *and* a token is set; wrong or missing token → `401`; unknown sender → guest, never an account; rate limited per sender; `404` when disabled |
+| The pending-action directory is reachable by URL | a stranger reads another sender's plan | file names are `sha1()` hashes of the sender key, every file starts with `<?php exit; ?>`, the directory is created `0700` with a deny-all `.htaccess`; point `channel.storage_dir` outside the web root if you can |
+| Slow search on a very large catalogue | each row runs four correlated subqueries (items, active loans, authors, popularity) | page size is capped at 100, the chat asks for 5; suggestions scan at most 300 titles; add the FULLTEXT index or check `EXPLAIN` if a query exceeds your budget |
+| Surface drift between the search and OPAC's own index | results come from `biblio` directly, not from `search_biblio`, so a record the OPAC indexer has not visited yet is still findable | records you do not want public should be `opac_hide = 1`; the chat already excludes them for guests and members |
+| Not yet exercised against a live database | the offline suite covers rules, roles, confirmation, HTTP and search building, but not MySQL execution | install with writes off, run `php index.php chatbot:selftest`, then try a staging copy and `php index.php clianything:doctor` before opening writes |
+| The bundled service copy and the Commands plugin drift apart | chat and console behave differently | the self-test compares both files with `sha1_file()` and fails when they differ |
+| A future SLiMS upgrade removes the plugin API | menus or the webhook stop appearing | the plugin only uses `registerMenu`, `custom_api_route` and `utility::isMemberLogin()` (guarded); if the hook disappears the two chat pages keep working and only the webhook goes silent |
+| Log noise | one `system_log` row per committed write | rows use `location = CLI-Anything` and can be filtered or rotated like any other |
+
+### Rolling back
+
+```bash
+php index.php plugin:deactivate <id>     # menus disappear immediately
+rm -rf plugins/chatbot                   # or move it aside
+rm config/chatbot.php
+```
+
+Nothing to un-migrate: there are no new tables or columns. What remains is
+audit history (`system_log`) and, only if you used the webhook, the
+`SB files/chatbot/` directory — both safe to delete once you have read them.
+Writes already committed are ordinary circulation records and stay.
 
 ## Who sees what
 
@@ -268,10 +349,13 @@ bot:   Rencana saja, belum ada yang ditulis
 | `confirm_ttl` | `180` | token lifetime (seconds) |
 | `max_message_length` | `500` | longer messages are refused |
 | `result_limit` | `5` | rows shown per answer |
+| `search` | ranked defaults | weights, typo stage, suggestions, see [Tuning](#tuning) |
 | `channel` | off | WhatsApp/Telegram webhook, see [Messaging channels](#messaging-channels) |
 
 Turning a gate on still requires `allow_write` in `config/cli_anything.php`;
-the chat never opens what the CLI keeps closed.
+the chat never opens what the CLI keeps closed. Writes and the webhook are the
+only two things that change behaviour after installation — everything else is
+read-only and can be switched off without touching the database.
 
 ## HTTP contract
 
@@ -436,6 +520,8 @@ php index.php chatbot:ask "ringkasan hari ini" --json
 no token needed because the flag itself is the operator's confirmation.
 
 ## Security notes
+
+Implementation detail behind the risks above.
 
 * **Role from the session.** `Actor::fromOpac()` reads `$_SESSION['mid']`
   (+ `utility::isMemberLogin()`); the staff page cannot even render without

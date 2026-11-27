@@ -210,8 +210,9 @@ Surfaces: `index.php?p=chatbot` (OPAC menu) and **System → Chatbot** (staff).
 The same engine also answers a webhook — `POST index.php?p=api/chatbot/v1/message`
 with `X-Chatbot-Token` — so WhatsApp or Telegram can talk to it; senders are
 mapped to a member id or a staff uid by an explicit allow-list, and everyone
-else is a guest. Full details, role matrix, payload shapes and the JSON
-contract: `plugins/chatbot/README.md`.
+else is a guest. Full details — what the install adds, benefits, risks with their mitigations,
+role matrix, payload shapes, JSON contract and rollback — are in
+`plugins/chatbot/README.md`.
 
 Catalogue search does not assume clean input. The query is tokenised and
 stripped of filler words, matched in three stages (`exact` → shortened token →

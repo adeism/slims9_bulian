@@ -215,6 +215,60 @@ MariaDB dengan skema SLiMS 9, dan tabel `biblio`, `item`, `member`, `loan`,
 `fines` yang selalu ada. Penulisan memakai kelas sirkulasi milik SLiMS, jadi
 aturan pinjam, struk, dan catatan `system_log` sama seperti dari area admin.
 
+### Manfaat dan risikonya
+
+Sebelum memasang, ada baiknya tahu apa yang bertambah dan apa yang perlu
+dijaga.
+
+**Yang bertambah**
+
+| Yang ditambahkan | Sifat |
+|---|---|
+| folder `plugins/chatbot/` | baru, tidak menimpa berkas apa pun |
+| `config/chatbot.php` | baru, dari contoh yang disediakan |
+| menu **Chatbot** di OPAC dan **Sistem → Chatbot** | bisa dimatikan lewat konfigurasi |
+| rute `api/chatbot/v1/message` | **hanya** aktif bila webhook dinyalakan dan token diisi |
+| baris di `system_log` | satu baris untuk setiap transaksi yang benar-benar ditulis |
+
+Tidak ada tabel baru, tidak ada kolom baru, dan tidak ada berkas `admin/`,
+`lib/`, atau `index.php` yang diubah. Plugin juga tidak pernah menjalankan
+`ALTER TABLE`.
+
+**Manfaat**
+
+* Pertanyaan rutin ("apakah buku ini tersedia?", "kapan jatuh tempo saya?",
+  "berapa denda saya?") terjawab tanpa antre di meja sirkulasi.
+* Pencarian memaafkan salah ketik dan diurutkan relevansi, sehingga katalog
+  lebih mudah ditelusuri; "buku populer" menjadi daftar bacaan yang siap
+  dipakai.
+* Peran ditentukan sesi, bukan isi pesan: anggota tidak mungkin melihat data
+  anggota lain, dan tamu diarahkan untuk masuk.
+* Transaksi tetap dua langkah dan tercatat di log audit, dengan pengenal staf
+  atau anggota yang sebenarnya.
+
+**Risiko dan pengamannya**
+
+| Risiko | Pengamanan bawaan |
+|---|---|
+| Transaksi keliru pada data nyata | penulisan mati secara bawaan (`allow_admin_write`/`allow_write`), selalu didahului pratinjau, konfirmasi sekali pakai dan kedaluwarsa 180 detik, setiap commit diaudit |
+| Data pribadi terbaca di layar atau aplikasi pesan | e-mail, telepon, dan alamat selalu disamarkan; tidak ada jalan membuka data aslinya dari chat |
+| Webhook disalahgunakan | mati secara bawaan, wajib token, pengirim tak dikenal diperlakukan sebagai tamu, dibatasi per pengirim |
+| Folder rencana transaksi diakses lewat URL | nama berkas berupa hash, diberi penjaga `<?php exit; ?>`, folder `0700` dengan `.htaccess` penolak |
+| Pencarian lambat pada katalog sangat besar | satu halaman maksimal 100 baris (chat 5), saran dibatasi 300 judul; index FULLTEXT dipakai otomatis bila Anda menambahkannya |
+| Belum diuji pada basis data nyata di repositori ini | pasang dengan penulisan mati, jalankan `chatbot:selftest`, lalu uji di salinan panggung sebelum membuka penulisan |
+
+**Mencabut pemasangan**
+
+```bash
+php index.php plugin:deactivate <id>
+rm -rf plugins/chatbot
+rm config/chatbot.php
+```
+
+Tidak ada yang perlu dibalik di basis data. Yang tertinggal hanyalah riwayat
+audit di `system_log` dan — bila webhook dipakai — folder `SB files/chatbot/`;
+keduanya aman dihapus setelah dibaca.
+
 ### Lewat WhatsApp atau Telegram
 
 Pertanyaan tidak harus datang dari halaman web. Mesin yang sama bisa menjawab
