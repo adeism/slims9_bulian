@@ -24,7 +24,19 @@ final class Webhook
     public static function dispatch()
     {
         $config = Config::all();
-        $payload = json_decode(self::rawBody(), true);
+        $body = Http::body();
+
+        if ($body['too_large']) {
+            Http::respond([
+                'ok' => false,
+                'error' => 'PAYLOAD_TOO_LARGE',
+                'reply' => '',
+            ], 413);
+
+            return;
+        }
+
+        $payload = json_decode($body['raw'], true, 32);
 
         $result = Channel::handle(
             is_array($payload) ? $payload : [],
@@ -78,20 +90,6 @@ final class Webhook
 
         echo 'forbidden';
         exit;
-    }
-
-    /**
-     * @return string
-     */
-    private static function rawBody(): string
-    {
-        if (!isset($_SERVER['REQUEST_METHOD'])) {
-            return '';
-        }
-
-        $raw = @file_get_contents('php://input');
-
-        return is_string($raw) ? $raw : '';
     }
 
     /**

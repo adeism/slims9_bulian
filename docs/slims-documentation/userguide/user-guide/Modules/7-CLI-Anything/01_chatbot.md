@@ -459,6 +459,8 @@ Yang perlu dipahami:
 | Halaman riwayat kosong | belum ada percakapan atau `log.enabled` mati | cek `php index.php chatbot:log`, nyalakan blok `log` |
 | Semua pertanyaan ditolak dengan kalimat yang sama | satu aturan answer terlalu luas | buka **Chatbot rules**, lihat kolom "Memblokir", persempit polanya |
 | Perbaikan tidak bisa disimpan | `files/chatbot` tidak bisa ditulis PHP | beri izin tulis, atau set `faq.overlay_file` |
+| `chatbot:selftest` menyebut "repaired at load" | ada nilai salah ketik di `config/chatbot.php` | betulkan nilainya; chat tetap jalan dengan nilai aman |
+| Integrasi WhatsApp menerima 413 | badan permintaan lebih dari 256 KB | kirim hanya pesan yang relevan, bukan riwayat percakapan |
 | Webhook menjawab `404 CHATBOT_DISABLED` | `channel.enabled` mati atau `token` kosong | isi keduanya, lalu simpan ulang |
 | Webhook menjawab `401 UNAUTHORIZED` | header token salah atau gateway tidak mengirimnya | samakan dengan `channel.token` |
 | Balasan selalu "masuk ke area anggota" | nomor/chat id belum terdaftar | tambahkan ke `channel.members` atau `channel.staff` |

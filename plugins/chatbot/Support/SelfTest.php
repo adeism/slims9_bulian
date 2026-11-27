@@ -45,6 +45,7 @@ final class SelfTest
         self::channels($cases);
         self::stock($cases);
         self::http($cases);
+        self::resilience($cases);
 
         Config::override(null);
         $_SESSION = [];
@@ -2471,6 +2472,152 @@ final class SelfTest
             'stock: a greeting answers without touching the database',
             !empty($greeting['ok']) && isset($greeting['reply']['text']),
             json_encode($greeting['error'] ?? ($greeting['meta'] ?? []))
+        );
+    }
+
+
+    /**
+     * What happens when the world is wrong: a hand-edited config, a body that
+     * is too large, a database that throws. The chat must degrade, not fail.
+     *
+     * @param array $cases
+     * @return void
+     */
+    private static function resilience(array &$cases)
+    {
+        $_SESSION = [];
+        RateLimit::reset();
+
+        // ---- configuration repair ---------------------------------------
+        $defaults = Config::defaults();
+        $hostile = array_merge($defaults, [
+            'language' => 'fr',
+            'rate_limit_per_minute' => 0,
+            'max_message_length' => 'abc',
+            'log' => array_merge($defaults['log'], ['retention_days' => -5, 'max_files' => 0, 'max_bytes' => 1]),
+            'faq' => array_merge($defaults['faq'], ['threshold' => 'abc', 'topics' => 99]),
+            'guard' => ['enabled' => 'off'],
+            'channel' => array_merge($defaults['channel'], ['members' => 'nope', 'confirm_words' => 'ya']),
+            'search' => array_merge($defaults['search'], [
+                'sort' => 'alphabetical',
+                'weights' => array_merge($defaults['search']['weights'], ['title_exact' => -10]),
+                'max_tokens' => 0,
+            ]),
+        ]);
+
+        $repaired = Config::sanitise($hostile);
+        self::add(
+            $cases,
+            'config: a stray value is repaired instead of breaking the chat',
+            $repaired['language'] === 'auto'
+                && $repaired['rate_limit_per_minute'] === 1
+                && $repaired['max_message_length'] === 500
+                && $repaired['log']['retention_days'] === 1
+                && $repaired['log']['max_files'] === 1
+                && $repaired['log']['max_bytes'] === 4096
+                && $repaired['faq']['threshold'] === 0.62
+                && $repaired['faq']['topics'] === 10
+                && $repaired['guard']['enabled'] === false
+                && $repaired['channel']['members'] === []
+                && is_array($repaired['channel']['confirm_words'])
+                && $repaired['search']['sort'] === 'relevance'
+                && $repaired['search']['weights']['title_exact'] === 0
+                && $repaired['search']['max_tokens'] === 1,
+            json_encode([
+                'threshold' => $repaired['faq']['threshold'],
+                'rate' => $repaired['rate_limit_per_minute'],
+                'sort' => $repaired['search']['sort'],
+                'members' => $repaired['channel']['members'],
+            ])
+        );
+
+        self::add(
+            $cases,
+            'config: repairs are listed and a clean file is left alone',
+            in_array('faq.threshold', Config::repairs(), true)
+                && in_array('language', Config::repairs(), true)
+                && Config::sanitise($defaults) == $defaults
+                && Config::repairs() === [],
+            json_encode(Config::repairs())
+        );
+
+        // ---- request body ------------------------------------------------
+        $json = Http::decodeBody('{"message":"halo"}');
+        $form = Http::decodeBody('phone=628111&message=halo');
+        $oversized = Http::decodeBody(str_repeat('a', Http::MAX_BODY + 10));
+        $malformed = Http::decodeBody('{{ not json');
+
+        self::add(
+            $cases,
+            'http: the body is decoded once and an oversized one is refused',
+            ($json['data']['message'] ?? '') === 'halo'
+                && ($form['data']['message'] ?? '') === 'halo'
+                && $oversized['too_large'] === true
+                && $oversized['data'] === []
+                && $oversized['raw'] === ''
+                && $malformed['too_large'] === false
+                && is_array($malformed['data']),
+            json_encode(['max' => Http::MAX_BODY, 'oversized' => $oversized['too_large']])
+        );
+
+        // ---- a service that throws --------------------------------------
+        $dir = self::tempDir('resilience');
+        $config = self::config();
+        $config['log'] = array_merge($config['log'], ['dir' => $dir]);
+
+        $broken = new TestService();
+        $broken->throwOn = ['biblio.list'];
+
+        $guest = new Engine(['role' => 'guest'], $config, $broken, true);
+        $guestReply = $guest->handle('cari buku sejarah');
+        $staff = new Engine(['role' => 'staff', 'id' => '1'], $config, $broken, true);
+        $staffReply = $staff->handle('cari buku sejarah');
+
+        self::add(
+            $cases,
+            'engine: a database error is a code for the log, not a sentence for a guest',
+            $guestReply['ok'] === false
+                && ($guestReply['error']['code'] ?? '') === 'UNEXPECTED_ERROR'
+                && !self::mentions($guestReply, 'SELECT')
+                && !self::mentions($guestReply, 'damaged')
+                && self::mentions($staffReply, 'SELECT'),
+            json_encode(['guest' => $guestReply['reply'] ?? null, 'staff' => $staffReply['reply'] ?? null])
+        );
+
+        $headers = ['X-Chatbot-Token' => 'secret'];
+        $channelConfig = array_merge($config, [
+            'channel' => array_merge(Channel::config($config), [
+                'enabled' => true,
+                'token' => 'secret',
+                'storage_dir' => $dir,
+                'members' => [],
+                'staff' => [],
+            ]),
+        ]);
+
+        $webhook = Channel::handle(
+            ['channel' => 'whatsapp', 'from' => '628999', 'text' => 'cari buku sejarah'],
+            $channelConfig,
+            $broken,
+            $headers
+        );
+
+        $rows = (new LogStore($channelConfig))->records(['limit' => 10]);
+        $failures = array_values(array_filter($rows, function ($row) {
+            return (string)($row['err'] ?? '') === 'UNEXPECTED_ERROR';
+        }));
+
+        self::add(
+            $cases,
+            'channel: a failure keeps its error code and leaves a row in the log',
+            $webhook['ok'] === false
+                && ($webhook['error']['code'] ?? '') === 'UNEXPECTED_ERROR'
+                && $failures !== []
+                && strpos((string)$webhook['reply'], 'SELECT') === false,
+            json_encode([
+                'code' => $webhook['error']['code'] ?? null,
+                'rows' => count($failures),
+            ])
         );
     }
 

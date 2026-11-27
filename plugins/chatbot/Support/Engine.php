@@ -1404,10 +1404,13 @@ final class Engine
         $code = (string)($error['code'] ?? 'UNEXPECTED_ERROR');
         $message = (string)($error['message'] ?? '');
 
-        $response = $this->plain(Lang::t($this->locale, 'error_code', [
-            'code' => $code,
-            'message' => $message,
-        ]), 'error');
+        // The exception text comes from the database layer: it can name
+        // tables, SQL and sometimes the patron id that was asked about. Only
+        // staff see it; everyone else gets the generic sentence and the code
+        // stays in the payload for the log and for the operator.
+        $response = $this->plain($this->role === Policy::STAFF
+            ? Lang::t($this->locale, 'error_code', ['code' => $code, 'message' => $message])
+            : Lang::t($this->locale, 'error_generic'), 'error');
 
         $response['ok'] = false;
         $response['error'] = ['code' => $code, 'message' => $message];

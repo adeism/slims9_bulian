@@ -683,8 +683,9 @@ Balas YA untuk menulis, atau BATAL untuk membatalkan.
 | `CHATBOT_DISABLED` | 404 | `channel.enabled` off or token empty |
 | `UNAUTHORIZED` | 401 | missing or wrong token |
 | `EMPTY_MESSAGE` | 422 | no text in the payload |
+| `PAYLOAD_TOO_LARGE` | 413 | body above 256 KB; nothing is parsed |
 | `RATE_LIMITED` | 429 | over `rate_limit_per_minute` for this sender |
-| `UNEXPECTED_ERROR` | 500 | see `system_log` |
+| `UNEXPECTED_ERROR` | 422 | the service failed; the code is in the reply, the text is in the log |
 
 ### Storage
 
@@ -751,6 +752,32 @@ Implementation detail behind the risks above.
   a record even if a message asks for it.
 * **CSP-friendly.** No inline JavaScript; the small admin wrapper style moved
   into `assets/chatbot.css`.
+
+## When something goes wrong
+
+The chat is an unauthenticated surface in front of a database, so the failure
+paths are part of the design, not an afterthought.
+
+* **A broken config boots.** `Config::sanitise()` runs on every load: sections
+  that are not arrays fall back to their defaults, `"on"/"off"/"1"/"0"` are
+  accepted for flags, numbers are clamped (threshold 0.30–0.95, message length
+  40–2000, retention 1–3650 days, files 1–100) and the repair is remembered.
+  `chatbot:selftest` prints the repaired keys at the end, so a typo does not
+  stay invisible. Without this, `'threshold' => 'abc'` became `0.0` and the FAQ
+  answered everything.
+* **Request bodies are bounded.** Both the browser endpoint and the webhook
+  read `php://input` through `Http::body()` with a 256 KB ceiling and JSON
+  depth 32; above it the webhook answers 413 `PAYLOAD_TOO_LARGE` without
+  decoding anything.
+* **Errors are codes, not stack traces.** A service exception becomes
+  `UNEXPECTED_ERROR`; guests and members see the generic sentence, staff see
+  the code and message, and the conversation log stores the code. The raw
+  message can name tables or a patron id, so it never goes into a public reply.
+* **The webhook reply keeps the code.** A failed answer is no longer an empty
+  "ok" response: `error.code` tells an integration whether to retry.
+* **Writes fail soft.** A log row that cannot be written, a lock that cannot
+  be taken, or a missing `files/` directory never turns a correct answer into
+  an error.
 
 ## Files
 

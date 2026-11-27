@@ -20,11 +20,25 @@ dicatat di bawah.
 | 4 — pengukuran | selesai | `tests/corpus.php` (124 kalimat, 63 di antaranya non-FAQ), `Support/Evaluation.php`, `Commands/ChatbotEval.php` |
 | 5 — uji lapangan | selesai kecuali e2e berdata | papan angka mingguan (`p50`/`p95`, guard hits, 10 tak terjawab teratas) selesai; `Commands/ChatbotE2e.php` tersedia tetapi belum dijalankan terhadap DB sungguhan |
 
-Tes offline naik dari **111 menjadi 180 asersi**. Korpus berisi **124
+Tes offline naik dari **111 menjadi 185 asersi**. Korpus berisi **124
 kalimat**: 61 mengharapkan jawaban FAQ (Indonesia dan Inggris) dan 63 menuntut
 mesin *tidak* menjawabnya lewat FAQ (pencarian, data anggota, sapaan, atau
 "tidak ada jawaban"). Akurasi 1.0, toleransi salah ketik 0.964 pada 168 varian,
 paritas bahasa dan kontrak tampilan tanpa temuan.
+
+### Pengerasan setelah fase 5
+
+Empat hal yang tidak ada di sketsa awal tetapi muncul saat menutup fase:
+
+1. `Config::sanitise()` memperbaiki konfigurasi yang salah ketik (ambang FAQ
+   non-numerik berubah menjadi 0.0 dan membuat FAQ menjawab segalanya), dengan
+   daftar perbaikan yang dicetak `chatbot:selftest`.
+2. Badan permintaan dibatasi 256 KB dan kedalaman JSON 32; webhook menjawab
+   413 `PAYLOAD_TOO_LARGE` tanpa mendekode apa pun.
+3. Pesan pengecualian dari lapisan basis data hanya ditampilkan ke staf;
+   pengunjung menerima kalimat umum, kodenya tetap masuk log.
+4. Jawaban webhook yang gagal tetap membawa `error.code`, bukan respons kosong
+   yang tampak berhasil.
 
 ### Penyimpangan yang perlu diketahui
 

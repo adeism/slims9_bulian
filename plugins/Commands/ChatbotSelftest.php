@@ -33,6 +33,7 @@ class ChatbotSelftest extends CliAnythingCommand
         }
 
         $report = \Chatbot\SelfTest::run();
+        $report['config_repairs'] = \Chatbot\Config::repairs();
 
         if ($this->wantsJson()) {
             $this->output(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
@@ -56,6 +57,14 @@ class ChatbotSelftest extends CliAnythingCommand
             $this->success(sprintf('%d passed, 0 failed', $report['passed']));
         } else {
             $this->error(sprintf('%d passed, %d failed', $report['passed'], $report['failed']));
+        }
+
+        // A repaired config still boots, which is the point, but the typo is
+        // worth showing: silently accepting "threshold => abc" is how a chat
+        // starts answering everything.
+        if ($report['config_repairs'] !== []) {
+            $this->newLine();
+            $this->error('config/chatbot.php repaired at load: ' . implode(', ', $report['config_repairs']));
         }
 
         return $report['failed'] === 0 ? 0 : 1;

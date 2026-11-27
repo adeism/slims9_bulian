@@ -21,6 +21,9 @@ final class Http
 {
     const CSRF_KEY = 'chatbot_csrf';
 
+    /** Largest request body accepted, in bytes (256 KB). */
+    const MAX_BODY = 262144;
+
     /**
      * Is this request for the chat endpoint? (`?action=ask`)
      *
@@ -182,26 +185,73 @@ final class Http
      */
     public static function readInput(): array
     {
-        $raw = '';
+        $body = self::body();
 
-        if (isset($_SERVER['REQUEST_METHOD'])) {
-            $raw = (string)file_get_contents('php://input');
-        }
-
-        if ($raw !== '') {
-            $decoded = json_decode($raw, true);
-            if (is_array($decoded)) {
-                return $decoded;
-            }
-
-            $parsed = [];
-            parse_str($raw, $parsed);
-            if (!empty($parsed)) {
-                return $parsed;
-            }
+        if (!empty($body['data'])) {
+            return $body['data'];
         }
 
         return isset($_POST) && is_array($_POST) ? $_POST : [];
+    }
+
+    /**
+     * Read the request body once, with a ceiling.
+     *
+     * The chat endpoint and the channel webhook are reachable without a login,
+     * so an unbounded `file_get_contents('php://input')` lets one request ask
+     * for as much memory as it likes. Anything above the ceiling is reported
+     * and never decoded; the caller decides whether that is a 413 or an empty
+     * message.
+     *
+     * @param int $limit bytes
+     * @return array{raw:string,data:array,too_large:bool}
+     */
+    public static function body(int $limit = self::MAX_BODY): array
+    {
+        $raw = '';
+
+        if (isset($_SERVER['REQUEST_METHOD'])) {
+            $handle = @fopen('php://input', 'rb');
+
+            if ($handle !== false) {
+                $read = @stream_get_contents($handle, $limit + 1);
+                $raw = is_string($read) ? $read : '';
+                @fclose($handle);
+            }
+        }
+
+        return self::decodeBody($raw, $limit);
+    }
+
+    /**
+     * Decode a body that was already read. Kept separate so the limits can be
+     * exercised without a real request.
+     *
+     * @param string $raw
+     * @param int    $limit
+     * @return array{raw:string,data:array,too_large:bool}
+     */
+    public static function decodeBody(string $raw, int $limit = self::MAX_BODY): array
+    {
+        if ($limit > 0 && strlen($raw) > $limit) {
+            return ['raw' => '', 'data' => [], 'too_large' => true];
+        }
+
+        if ($raw === '') {
+            return ['raw' => '', 'data' => [], 'too_large' => false];
+        }
+
+        $decoded = json_decode($raw, true, 32);
+
+        if (is_array($decoded)) {
+            return ['raw' => $raw, 'data' => $decoded, 'too_large' => false];
+        }
+
+        // Form posts and the older gateways that send `phone=..&message=..`.
+        $parsed = [];
+        parse_str($raw, $parsed);
+
+        return ['raw' => $raw, 'data' => is_array($parsed) ? $parsed : [], 'too_large' => false];
     }
 
     /**

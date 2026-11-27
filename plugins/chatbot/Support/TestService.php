@@ -20,6 +20,14 @@ final class TestService
     public $lastActor = [];
 
     /**
+     * Method names that should throw instead of answering, so the failure
+     * paths (database down, damaged table) can be exercised offline.
+     *
+     * @var string[]
+     */
+    public $throwOn = [];
+
+    /**
      * @return TestService
      */
     public function actingAs(string $type, string $id, string $name = ''): TestService
@@ -60,6 +68,10 @@ final class TestService
      */
     public function biblioList(string $q = '', int $limit = 20, int $offset = 0, string $sort = 'relevance', bool $includeHidden = false, array $options = []): array
     {
+        if (in_array('biblio.list', $this->throwOn, true)) {
+            throw new \RuntimeException('Table biblio is damaged near "SELECT * FROM member"');
+        }
+
         $this->calls[] = ['biblio.list', [$q, $limit, $offset, $sort, $includeHidden, $options]];
 
         if (trim($q) === 'zzz') {

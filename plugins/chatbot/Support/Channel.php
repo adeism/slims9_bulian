@@ -120,12 +120,16 @@ final class Channel
 
             self::logMessage($message, $actor, $config, $locale, $response, $pending, $committed, $started);
 
+            // A failed answer keeps its error code: the webhook caller (and
+            // the log) can then tell "nothing found" from "the service is
+            // down" instead of seeing an empty, successful-looking reply.
             return self::answer(
                 (string)($response['role'] ?? $actor['role']),
                 self::render($response, $locale, $pending),
                 $pending,
                 (string)($response['meta']['intent'] ?? null),
-                $response['ok'] ?? true
+                (bool)($response['ok'] ?? true),
+                isset($response['error']['code']) ? (string)$response['error']['code'] : null
             );
         } catch (\Throwable $error) {
             return self::failure('UNEXPECTED_ERROR', Lang::t($locale, 'error_generic'), 500);
@@ -428,9 +432,9 @@ final class Channel
      * @param bool        $ok
      * @return array
      */
-    private static function answer(string $role, string $reply, bool $pending, ?string $intent, bool $ok = true): array
+    private static function answer(string $role, string $reply, bool $pending, ?string $intent, bool $ok = true, ?string $code = null): array
     {
-        return [
+        $response = [
             'ok' => $ok,
             'status' => $ok ? 200 : 422,
             'role' => Intent::normaliseRole($role),
@@ -438,6 +442,12 @@ final class Channel
             'pending' => $pending,
             'intent' => $intent === '' ? null : $intent,
         ];
+
+        if (!$ok && $code !== null && $code !== '') {
+            $response['error'] = ['code' => $code, 'message' => $reply];
+        }
+
+        return $response;
     }
 
     /**
