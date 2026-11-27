@@ -36,6 +36,7 @@ final class SelfTest
         self::reads($cases);
         self::writes($cases);
         self::search($cases);
+        self::faq($cases);
         self::channels($cases);
         self::stock($cases);
         self::http($cases);
@@ -1083,6 +1084,210 @@ final class SelfTest
         @rmdir($dir);
     }
 
+
+
+    /**
+     * FAQ content: one file, conservative matching.
+     *
+     * @param array $cases
+     * @return void
+     */
+    private static function faq(array &$cases)
+    {
+        $_SESSION = [];
+        RateLimit::reset();
+
+        $config = self::config();
+        $items = Faq::items($config);
+
+        self::add(
+            $cases,
+            'faq: the sample content loads and validates',
+            count($items) >= 10 && Faq::validate($items) === [],
+            json_encode(['items' => count($items), 'problems' => Faq::validate($items)])
+        );
+
+        $expected = [
+            'jam buka' => 'hours',
+            'nomor telepon' => 'phone',
+            'alamat perpustakaan' => 'address',
+            'berapa lama boleh pinjam' => 'loan-limit',
+            'denda' => 'fines',
+        ];
+
+        $wrong = [];
+        foreach ($expected as $message => $id) {
+            $match = Faq::match($message, $config, 'id');
+            if (is_null($match) || $match['id'] !== $id) {
+                $wrong[$message] = $match['id'] ?? null;
+            }
+        }
+
+        self::add(
+            $cases,
+            'faq: common questions reach the right entry',
+            $wrong === [],
+            json_encode($wrong)
+        );
+
+        $typo = Faq::match('telepn', $config, 'id');
+        self::add(
+            $cases,
+            'faq: a one-letter typo still finds the entry',
+            !is_null($typo) && $typo['id'] === 'phone' && $typo['score'] >= 0.7,
+            json_encode($typo['id'] ?? null) . ' ' . json_encode($typo['score'] ?? null)
+        );
+
+        self::add(
+            $cases,
+            'faq: an unrelated question is left to the catalogue',
+            is_null(Faq::match('sejarah indonesia', $config, 'id'))
+                && is_null(Faq::match('pinjamkan B00001 ke anggota 123', $config, 'id'))
+        );
+
+        $english = Faq::match('opening hours', $config, 'en');
+        self::add(
+            $cases,
+            'faq: English asks get the English answer',
+            !is_null($english) && strpos((string)$english['answer'], 'Monday') !== false,
+            (string)($english['answer'] ?? '')
+        );
+
+        $disabled = array_merge($config, ['faq' => ['enabled' => false]]);
+        self::add(
+            $cases,
+            'faq: switching the block off disables both content and matching',
+            Faq::items($disabled) === [] && is_null(Faq::match('jam buka', $disabled, 'id'))
+        );
+
+        $problems = Faq::validate([
+            ['id' => 'x', 'question' => 'Q', 'answer' => 'A', 'keywords' => ['q']],
+            ['id' => 'x', 'question' => 'Q2', 'answer' => '', 'keywords' => ['q2']],
+        ]);
+
+        self::add(
+            $cases,
+            'faq: validation catches duplicates and empty answers',
+            count($problems) >= 2,
+            json_encode($problems)
+        );
+
+        // ---- what the user sees ---------------------------------------
+        $engine = new Engine(Actor::anonymous('guest'), $config, new TestService());
+        $hours = $engine->handle('jam buka');
+
+        self::add(
+            $cases,
+            'faq: the chat answers with the FAQ text',
+            ($hours['meta']['intent'] ?? '') === Intent::FAQ
+                && ($hours['meta']['faq_id'] ?? '') === 'hours'
+                && strpos((string)($hours['reply']['text'] ?? ''), '08.00') !== false,
+            json_encode(['intent' => $hours['meta']['intent'] ?? null, 'text' => $hours['reply']['text'] ?? ''])
+        );
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $service = new TestService();
+        $engine = new Engine(Actor::make('member', '123', 'Rina'), $config, $service);
+        $loans = $engine->handle('pinjaman saya');
+
+        self::add(
+            $cases,
+            'faq: a member question is never answered by the FAQ',
+            ($loans['meta']['intent'] ?? '') === Intent::MY_LOANS,
+            json_encode($loans['meta']['intent'] ?? null)
+        );
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $engine = new Engine(Actor::anonymous('guest'), $config, new TestService());
+        $search = $engine->handle('cari buku sejarah');
+
+        self::add(
+            $cases,
+            'faq: an explicit search stays a search',
+            ($search['meta']['intent'] ?? '') === Intent::BIBLIO_LIST,
+            json_encode($search['meta']['intent'] ?? null)
+        );
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $engine = new Engine(Actor::anonymous('guest'), $config, new TestService());
+        $help = $engine->handle('bantuan');
+        $titles = [];
+        foreach ((array)($help['reply']['blocks'] ?? []) as $block) {
+            if (($block['type'] ?? '') === 'list' && ($block['title'] ?? '') === Lang::t('en', 'faq_topics')) {
+                $titles = array_column((array)($block['items'] ?? []), 'title');
+            }
+        }
+
+        self::add(
+            $cases,
+            'faq: the help answer lists the questions',
+            count($titles) >= 3 && in_array('Opening hours', $titles, true),
+            json_encode($titles)
+        );
+
+
+        // ---- a library-owned file wins over the sample -----------------
+        $dir = sys_get_temp_dir() . '/slims-chatbot-faq-' . getmypid();
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
+        $file = $dir . '/faq.php';
+        file_put_contents($file, "<?php\nreturn [\n"
+            . "    [\n"
+            . "        'id' => 'hours',\n"
+            . "        'question' => 'Kapan buka?',\n"
+            . "        'keywords' => ['jam buka'],\n"
+            . "        'answer' => 'Buka 09.00-15.00 saja.',\n"
+            . "        'link' => 'https://example.org/jam-layanan',\n"
+            . "    ],\n"
+            . "];\n");
+
+        $custom = array_merge($config, ['faq' => array_merge($config['faq'], ['file' => $file])]);
+        $customItems = Faq::items($custom);
+        $customMatch = Faq::match('jam buka', $custom, 'id');
+
+        self::add(
+            $cases,
+            'faq: faq.file overrides the bundled sample',
+            count($customItems) === 1
+                && $customMatch['answer'] === 'Buka 09.00-15.00 saja.'
+                && Faq::source() === $file,
+            json_encode(['count' => count($customItems), 'source' => Faq::source()])
+        );
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $engine = new Engine(Actor::anonymous('guest'), $custom, new TestService());
+        $customReply = $engine->handle('jam buka');
+        $link = null;
+        foreach ((array)($customReply['reply']['blocks'] ?? []) as $block) {
+            if (($block['type'] ?? '') === 'link') {
+                $link = $block;
+            }
+        }
+
+        self::add(
+            $cases,
+            'faq: a "read more" link is rendered with a label',
+            is_array($link)
+                && ($link['href'] ?? '') === 'https://example.org/jam-layanan'
+                && ($link['label'] ?? '') === Lang::t('en', 'faq_more'),
+            json_encode($link)
+        );
+
+        @unlink($file);
+        @rmdir($dir);
+
+        self::add(
+            $cases,
+            'faq: chips point at the content',
+            in_array('jam buka', Intent::chips('guest', 'en'), true),
+            json_encode(Intent::chips('guest', 'en'))
+        );
+    }
 
     /**
      * A stock SLiMS 9 Bulian: the chatbot must reach a data service without

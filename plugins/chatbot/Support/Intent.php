@@ -22,6 +22,9 @@ final class Intent
     const GREETING = 'greeting';
     const THANKS = 'thanks';
     const HELP = 'help';
+
+    /** FAQ content, answered from config/chatbot.faq.php. */
+    const FAQ = 'faq.answer';
     const WHOAMI = 'whoami';
 
     const BIBLIO_LIST = 'biblio.list';

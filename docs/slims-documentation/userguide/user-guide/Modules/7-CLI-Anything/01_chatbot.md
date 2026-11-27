@@ -130,6 +130,71 @@ oleh plugin — ini keputusan Anda sebagai pengelola basis data:
 ALTER TABLE biblio ADD FULLTEXT INDEX ft_biblio_title (title);
 ```
 
+### Pertanyaan umum (FAQ)
+
+Tidak semua pertanyaan soal koleksi. "Jam buka?", "nomor telepon?", "alamat?",
+"berapa dendanya?" dijawab dari **satu halaman isi** yang perpustakaan miliki
+sendiri, bukan dari tabel katalog.
+
+```
+plugins/chatbot/Support/faq.sample.php     contoh bawaan (15 pertanyaan)
+            ↓ salin
+config/chatbot.faq.php                     isi sungguhan, di luar git
+```
+
+```bash
+cp plugins/chatbot/Support/faq.sample.php config/chatbot.faq.php
+php index.php chatbot:faq        # tampilkan isi + periksa kesalahannya
+```
+
+Sebelum disalin, chat menjawab dari contoh bawaan, jadi pemasangan baru sudah
+langsung berguna. **Nilai pada contoh hanyalah contoh**: jam layanan, alamat,
+nomor telepon, denda, dan biaya keanggotaan wajib diganti dengan kebijakan
+perpustakaan Anda sebelum dipakai publik.
+
+Satu entri berbentuk:
+
+```php
+[
+    'id' => 'hours',
+    'question' => 'Jam buka perpustakaan',
+    'question_en' => 'Opening hours',
+    'keywords' => ['jam buka', 'buka', 'tutup', 'opening hours', 'weekend'],
+    'answer' => 'Senin–Jumat 08.00–16.00, Sabtu 09.00–12.00.',
+    'answer_en' => 'Monday to Friday 08.00–16.00, Saturday 09.00–12.00.',
+],
+```
+
+Contoh bawaan sudah memuat pertanyaan yang paling sering datang: jam buka,
+alamat dan lokasi, telepon/WhatsApp, surel, cara menjadi anggota, biaya dan
+masa berlaku keanggotaan, batas pinjam, perpanjangan, denda, reservasi, ruang
+baca dan wifi, layanan referensi, kunjungan sekolah, donasi buku, serta kartu
+anggota hilang.
+
+Cara memilih jawaban sengaja hati-hati:
+
+* frasa kata kunci yang diketik persis ("jam buka", "nomor telepon") menang;
+* bila ada salah ketik, kata diterima jika mirip minimal 78% (`telepn` →
+  `telepon`) **dan** kata yang dikenali mencakup minimal 30% dari yang diketik,
+  sehingga "pinjamkan B00001 ke anggota 123" tidak dijawab dengan halaman
+  keanggotaan hanya karena ada kata "anggota";
+* pertanyaan hanya dicoba ketika pesan **bukan** perintah yang jelas —
+  "pinjaman saya" tetap pertanyaan pinjaman, "cari buku sejarah" tetap
+  pencarian;
+* jawaban berbahasa Inggris dipakai bila situs berbahasa Inggris dan entri
+  memuat `answer_en`.
+
+Ambang dan jumlah pertanyaan lain dapat diubah lewat blok `faq` di
+`config/chatbot.php`:
+
+```php
+'faq' => [
+    'enabled' => true,
+    'threshold' => 0.62,   // lebih kecil = lebih banyak menjawab
+    'topics' => 3,         // pertanyaan lain yang ditawarkan
+],
+```
+
 ### Transaksi selalu dua langkah
 
 Asisten tidak pernah langsung menulis. Permintaan transaksi dijawab dengan
@@ -323,6 +388,7 @@ Yang perlu dipahami:
 | Jawaban `UNEXPECTED_ERROR` | basis data atau tabel `loan_history` bermasalah | jalankan `php index.php clianything:doctor` |
 | Buku ada tetapi tidak ditemukan | judul disembunyikan dari OPAC (`opac_hide`) | cari dari akun staf, atau periksa status sembunyinya |
 | Hasil populer tampak tidak wajar | riwayat `loan` baru sebagian dimigrasi | wajar pada data uji; urutan mengikuti jumlah pinjaman yang tercatat |
+| Chat menjawab "tidak ada yang cocok" untuk jam buka | `config/chatbot.faq.php` belum ada atau `faq.enabled` mati | jalankan `php index.php chatbot:faq`, lalu salin contohnya |
 | Webhook menjawab `404 CHATBOT_DISABLED` | `channel.enabled` mati atau `token` kosong | isi keduanya, lalu simpan ulang |
 | Webhook menjawab `401 UNAUTHORIZED` | header token salah atau gateway tidak mengirimnya | samakan dengan `channel.token` |
 | Balasan selalu "masuk ke area anggota" | nomor/chat id belum terdaftar | tambahkan ke `channel.members` atau `channel.staff` |
@@ -331,5 +397,6 @@ Yang perlu dipahami:
 ### Untuk pengembang
 
 Rincian arsitektur, kontrak JSON, dan daftar berkas ada di
-[plugins/chatbot/README.md](https://github.com/adeism/slims9_bulian/blob/master/plugins/chatbot/README.md)
+[plugins/chatbot/README.md](https://github.com/adeism/slims9_bulian/blob/master/plugins/chatbot/README.md).
+Panduan mengisi FAQ ada di [02_faq.md](02_faq.md).
 dan di [Development Guide → Console → CLI-Anything](../../../development-guide/06-Console/05-CLI-Anything.md).

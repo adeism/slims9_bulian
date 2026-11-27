@@ -97,6 +97,21 @@ final class Config
             // Optional "read more" link shown in the chat header.
             'help_url' => '',
 
+            // Frequently asked questions. One content file, one page of
+            // answers; the plugin ships a sample and prefers
+            // config/chatbot.faq.php when it exists. See
+            // plugins/chatbot/README.md#faq.
+            'faq' => [
+                'enabled' => true,
+                // Absolute path. Empty = config/chatbot.faq.php, then the
+                // bundled sample.
+                'file' => '',
+                // 0..1. Lower is chattier, higher only answers close matches.
+                'threshold' => 0.62,
+                // How many other questions to offer after an answer.
+                'topics' => 3,
+            ],
+
             // Messaging channel webhook (WhatsApp Cloud, Telegram, or a
             // gateway that posts {phone, message}). Off by default; see
             // plugins/chatbot/README.md#messaging-channels.

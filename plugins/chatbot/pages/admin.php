@@ -43,12 +43,27 @@ if (Http::isAsk()) {
 $chatbotModule = isset($_GET['mod']) ? preg_replace('/[^A-Za-z0-9_-]/', '', (string)$_GET['mod']) : 'system';
 $chatbotId = isset($_GET['id']) ? preg_replace('/[^A-Fa-f0-9]/', '', (string)$_GET['id']) : '';
 
+$chatbotFaqItems = \Chatbot\Faq::items($chatbotConfig);
+$chatbotFaqSource = \Chatbot\Faq::source();
+
 $chatbotEndpoint = AWB . 'plugin_container.php?mod=' . rawurlencode($chatbotModule)
     . '&id=' . rawurlencode($chatbotId)
     . '&action=ask';
 
 ?>
 <div class="chatbot-wrap">
+    <p class="chatbot-faq-note">
+        <?php
+        echo htmlspecialchars(
+            Lang::t($chatbotLocale, 'ui_faq_note', [
+                'count' => count($chatbotFaqItems),
+                'file' => $chatbotFaqSource === '' ? '-' : $chatbotFaqSource,
+            ]),
+            ENT_QUOTES,
+            'UTF-8'
+        );
+        ?>
+    </p>
     <?php
     echo View::render(
         $chatbotActor,

@@ -80,6 +80,33 @@ return [
 
     /*
      |--------------------------------------------------------------------------
+     | FAQ
+     |--------------------------------------------------------------------------
+     |
+     | Routine questions (jam buka, alamat, telepon, denda, keanggotaan) are
+     | answered from ONE content file the library owns:
+     |
+     |   cp plugins/chatbot/Support/faq.sample.php config/chatbot.faq.php
+     |
+     | Until that file exists the bundled sample is used, so the chat answers
+     | out of the box. The sample values are examples -- replace the hours,
+     | address, phone number and policies with your own.
+     |
+     | `threshold` is how close a typed question must be to an entry before it
+     | is answered (0..1); below it the message goes to the catalogue search.
+     */
+    'faq' => [
+        'enabled' => true,
+        // Absolute path; empty = config/chatbot.faq.php, then the sample.
+        'file' => '',
+        // Lower = chattier, higher = stricter.
+        'threshold' => 0.62,
+        // How many other questions to offer after an answer.
+        'topics' => 3,
+    ],
+
+    /*
+     |--------------------------------------------------------------------------
      | Search
      |--------------------------------------------------------------------------
      |

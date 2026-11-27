@@ -82,6 +82,17 @@ final class Engine
 
         $intent = Intent::resolve($message, $this->role);
 
+        // A FAQ is not a command: try it only where the rule table is unsure
+        // (fallback search or no match at all), so "pinjaman saya" is never
+        // answered with the opening hours.
+        if ($this->faqApplies($intent)) {
+            $faq = Faq::match($message, $this->config, $this->locale);
+
+            if (!is_null($faq)) {
+                return $this->renderFaq($faq);
+            }
+        }
+
         if (!Policy::allows($this->role, $intent['name'])) {
             return $this->denied($intent);
         }
@@ -166,6 +177,17 @@ final class Engine
             ]),
         ];
 
+        $faqTopics = Faq::topics($this->config, $this->locale, 6);
+
+        if (!empty($faqTopics)) {
+            $blocks[] = $this->block('list', [
+                'title' => Lang::t($this->locale, 'faq_topics'),
+                'items' => array_map(function ($question) {
+                    return ['title' => $question];
+                }, $faqTopics),
+            ]);
+        }
+
         if ($this->role === Policy::GUEST) {
             $blocks[] = $this->loginLink();
         }
@@ -224,6 +246,67 @@ final class Engine
         }
 
         return $this->plain(Lang::t($this->locale, $reason), $reason === 'need_login' ? 'info' : 'warn', $blocks);
+    }
+
+    // -----------------------------------------------------------------
+    // FAQ
+    // -----------------------------------------------------------------
+
+    /**
+     * Should this message be tried against the FAQ?
+     *
+     * Only when the rule table fell back to a catalogue search (confidence
+     * 0.4) or found nothing at all. An explicit "cari …" (0.85) stays a
+     * search, and every other intent keeps its own handler.
+     *
+     * @param array $intent
+     * @return bool
+     */
+    private function faqApplies(array $intent): bool
+    {
+        $name = (string)($intent['name'] ?? Intent::NONE);
+
+        if (!in_array($name, [Intent::BIBLIO_LIST, Intent::NONE], true)) {
+            return false;
+        }
+
+        return (float)($intent['confidence'] ?? 1.0) < 0.8;
+    }
+
+    /**
+     * @param array $faq
+     * @return array
+     */
+    private function renderFaq(array $faq): array
+    {
+        $blocks = [];
+
+        $alternatives = array_slice(
+            (array)($faq['alternatives'] ?? []),
+            0,
+            max(0, (int)($faq['topics'] ?? 0))
+        );
+
+        if (!empty($alternatives)) {
+            $blocks[] = $this->block('list', [
+                'title' => Lang::t($this->locale, 'faq_other'),
+                'items' => array_map(function ($entry) {
+                    return ['title' => (string)($entry['question'] ?? '')];
+                }, $alternatives),
+            ]);
+        }
+
+        if (!empty($faq['link'])) {
+            $blocks[] = $this->block('link', [
+                'label' => Lang::t($this->locale, 'faq_more'),
+                'href' => (string)$faq['link'],
+            ]);
+        }
+
+        return $this->respond((string)($faq['answer'] ?? ''), $blocks, [
+            'intent' => Intent::FAQ,
+            'faq_id' => (string)($faq['id'] ?? ''),
+        ]);
     }
 
     // -----------------------------------------------------------------

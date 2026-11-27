@@ -184,6 +184,7 @@ no token cost — and every answer maps to a command a human can run.
 | You type | Intent | Command behind it |
 | --- | --- | --- |
 | `cari buku sejarah` / `find book history` | `biblio.list` | `clianything:biblio:list --q=sejarah` |
+| `jam buka`, `nomor telepon`, `alamat` | `faq.answer` | `config/chatbot.faq.php` (no command) |
 | `buku populer` / `terlaris` | `biblio.list` (`sort=popular`) | `clianything:biblio:list --sort=popular` |
 | `buku terbaru` | `biblio.list` (`sort=newest`) | `clianything:biblio:list --sort=newest` |
 | `apakah buku #12 tersedia?` | `biblio.get` | `clianything:biblio:get --id=12` |
@@ -200,6 +201,88 @@ no token cost — and every answer maps to a command a human can run.
 
 Short text with no keyword (`laskar pelangi`) is treated as a catalogue
 search rather than a dead end.
+
+## FAQ
+
+Some questions are not about the catalogue at all: opening hours, the phone
+number, how to join, how much the fine is. Those live in **one content file**
+the library owns — not in PHP, not in a table, not in the rule table.
+
+```
+plugins/chatbot/Support/faq.sample.php      shipped sample (15 entries)
+            ↓ copy
+config/chatbot.faq.php                      the real content, git-ignored
+```
+
+```bash
+cp plugins/chatbot/Support/faq.sample.php config/chatbot.faq.php
+php index.php chatbot:faq                    # list + validate what is loaded
+```
+
+Until you copy it, the chat answers from the sample, so a fresh install is
+useful immediately. The sample values are **examples**: hours, address, phone
+number, fines and fees all have to be replaced with your library's real
+policy before going live.
+
+### One entry
+
+```php
+[
+    'id' => 'hours',
+    'question' => 'Jam buka perpustakaan',
+    'question_en' => 'Opening hours',
+    'keywords' => ['jam buka', 'buka', 'tutup', 'opening hours', 'weekend'],
+    'answer' => 'Senin–Jumat 08.00–16.00, Sabtu 09.00–12.00.',
+    'answer_en' => 'Monday to Friday 08.00–16.00, Saturday 09.00–12.00.',
+    'link' => '',          // optional "read more"
+],
+```
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | unique; reported in the reply meta |
+| `question` | yes | shown in "sering ditanyakan" lists |
+| `question_en` | no | English title, falls back to `question` |
+| `keywords` | recommended | what people actually type, both languages; phrases work |
+| `answer` | yes | plain text, 2–4 short sentences |
+| `answer_en` | no | English answer, falls back to `answer` |
+| `link` | no | rendered as a link block |
+
+The sample covers the questions libraries actually get: opening hours,
+address, phone/WhatsApp, e-mail, membership and its fee, loan limits, renewal,
+fines, reservation, reading room and wifi, reference help, school visits,
+donations and a lost card.
+
+### How an answer is chosen
+
+* A keyword **phrase typed verbatim** ("jam buka", "nomor telepon") wins
+  outright.
+* Otherwise a near-miss word is accepted when it matches at least 78% of a
+  keyword word (`telepn` → `telepon`) **and** the recognized words cover at
+  least 30% of what was typed. That guard is why
+  `pinjamkan B00001 ke anggota 123` is not answered with the membership page
+  just because it contains "anggota".
+* The question text is a weaker signal, for people who retype the FAQ title.
+* Nothing above `faq.threshold` (default `0.62`) is answered; below it the
+  message continues to the catalogue search, unchanged.
+
+The FAQ is only consulted where the rule table is unsure — a fallback search
+or no match at all. `pinjaman saya` stays a loan question, `cari buku sejarah`
+stays a search, and every explicit command keeps its handler. Answers are
+localized: an English question gets `answer_en` when the site locale is `en`.
+
+```php
+'faq' => [
+    'enabled' => true,
+    'file' => '',          // empty = config/chatbot.faq.php, then the sample
+    'threshold' => 0.62,   // lower = chattier, higher = stricter
+    'topics' => 3,         // alternatives offered after an answer
+],
+```
+
+`php index.php chatbot:faq` prints the source file, the entries and any
+problem (missing `id`, duplicate `id`, empty `answer`, no keywords), and exits
+non-zero when the content needs attention — safe to run in a deploy script.
 
 ## Search that forgives typos
 
@@ -350,6 +433,7 @@ bot:   Rencana saja, belum ada yang ditulis
 | `max_message_length` | `500` | longer messages are refused |
 | `result_limit` | `5` | rows shown per answer |
 | `search` | ranked defaults | weights, typo stage, suggestions, see [Tuning](#tuning) |
+| `faq` | on, sample | content file, threshold, alternatives, see [FAQ](#faq) |
 | `channel` | off | WhatsApp/Telegram webhook, see [Messaging channels](#messaging-channels) |
 
 Turning a gate on still requires `allow_write` in `config/cli_anything.php`;
@@ -507,12 +591,14 @@ store — useful to reproduce what a gateway reported.
 ## Console equivalents
 
 ```bash
-php index.php chatbot:selftest                 # 97 offline checks, no DB
+php index.php chatbot:selftest                 # 111 offline checks, no DB
 php index.php chatbot:ask "pinjaman terlambat" # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
 php index.php chatbot:ask "buku populer"                    # sort=popular
 php index.php chatbot:ask "cari sejarh"                     # typo-tolerant
+php index.php chatbot:faq                                   # FAQ content check
+php index.php chatbot:ask "jam buka"                        # FAQ answer
 php index.php chatbot:ask "ringkasan hari ini" --json
 ```
 
@@ -569,11 +655,13 @@ plugins/chatbot/
 │   ├── Lang.php                English + Indonesian copy
 │   ├── Str.php                 mbstring fallback
 │   ├── Config.php              defaults + config/chatbot.php
+│   ├── Faq.php                 FAQ matching over one content file
+│   ├── faq.sample.php          the shipped sample content (15 entries)
 │   ├── TestService.php         fake CLI-Anything for offline tests
 │   ├── vendor/
 │   │   ├── CliAnything.php     copy of the service, stock-install fallback
 │   │   └── README.md           why it exists and how to re-sync it
-│   └── SelfTest.php            97 assertions
+│   └── SelfTest.php            111 assertions
 ├── pages/
 │   ├── opac.php                ?p=chatbot (guest + member)
 │   └── admin.php               System -> Chatbot (staff)
@@ -599,7 +687,9 @@ stock-install path (service resolution without the Commands plugin, envelope
 version, bundled copy in sync, greeting without a database), the search
 pipeline (tokenizer, similarity, ranking fragments, typo fallback, did-you-mean
 rendering, sort hints, hidden records, configurable weights, the optional
-FULLTEXT branch) and the escaping of the rendered shell.
+FULLTEXT branch), the FAQ (content validation, phrase and typo matching, the
+coverage guard, locale selection, the help listing) and the escaping of the
+rendered shell.
 
 ## Troubleshooting
 
