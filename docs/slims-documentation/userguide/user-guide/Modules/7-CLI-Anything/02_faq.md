@@ -89,9 +89,28 @@ FAQ **tidak** mengganggu perintah: pertanyaan seperti "pinjaman saya" atau
 "cari buku sejarah" tetap ditangani oleh mesin katalog dan sirkulasi, bukan
 oleh FAQ.
 
+### Memperbaiki lewat halaman review
+
+Pustakawan tidak harus menyunting berkas. **System → Chatbot review**
+menampilkan pertanyaan yang belum terjawab dan jawaban yang ditandai tidak
+membantu, lalu menyediakan tombol:
+
+* **tambah kata kunci** pada entri yang sudah ada;
+* **entri baru** (berstatus draf sampai diaktifkan);
+* **sembunyikan** entri tanpa menghapus isinya;
+* **pratinjau** untuk melihat jawaban sebelum disimpan;
+* **kembalikan versi sebelumnya** bila perubahan ternyata salah.
+
+Perubahan itu disimpan di `files/chatbot/faq.local.php` (lapisan tambahan),
+bukan di `config/chatbot.faq.php`. Berkas asli tetap milik perpustakaan dan
+tidak pernah ditulis oleh server web. Setiap perubahan tercatat dengan nama
+staf yang melakukannya.
+
 ### Setelah mengubah isi
 
-1. Jalankan `php index.php chatbot:faq` — harus berakhir tanpa kesalahan.
+1. Jalankan `php index.php chatbot:faq --strict` — harus berakhir tanpa
+   kesalahan, dan memberi tahu bila chat masih memakai contoh bawaan atau ada
+   entri yang disembunyikan aturan jawaban.
 2. Uji satu atau dua pertanyaan di OPAC (`index.php?p=chatbot`), termasuk
    pertanyaan yang sengaja salah ketik.
 3. Bila memakai WhatsApp/Telegram, uji juga dari nomor yang terdaftar.

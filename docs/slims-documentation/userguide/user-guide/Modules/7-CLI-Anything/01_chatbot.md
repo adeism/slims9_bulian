@@ -195,6 +195,73 @@ Ambang dan jumlah pertanyaan lain dapat diubah lewat blok `faq` di
 ],
 ```
 
+### Riwayat percakapan
+
+Setiap pesan tercatat di `files/chatbot/` (satu berkas per bulan). Tidak ada
+tabel baru, tidak ada nama anggota, nomor telepon, atau alamat IP: hanya hash
+aktor, potongan pertanyaan (300 karakter), intent, jawaban FAQ, dan lama
+proses. Retensi bawaan 90 hari.
+
+Staf membuka **System → Chatbot history**:
+
+* saring per rentang hari, permukaan (OPAC, admin, WhatsApp, Telegram), peran,
+  "belum terjawab", dan "ditandai tidak membantu";
+* klik satu percakapan untuk melihat rinciannya;
+* ekspor CSV (tanpa data pribadi);
+* angka mingguan: persen terjawab, jumlah yang belum terjawab, 👍/👎, latensi
+  rata-rata, dan daftar pertanyaan yang paling sering ditanya tetapi tidak
+  pernah terjawab.
+
+Dari terminal: `php index.php chatbot:log --days=7 --unanswered`.
+
+### Memperbaiki jawaban yang salah
+
+Di **System → Chatbot review** ada antrean: pertanyaan yang belum terjawab
+(30 hari) dan jawaban yang ditandai tidak membantu. Tindakan yang tersedia:
+
+| Tindakan | Akibat |
+|---|---|
+| Tambah kata kunci | frasa baru untuk entri yang sudah ada |
+| Entri baru | entri lengkap, berstatus **draf** sampai diaktifkan |
+| Sembunyikan | entri tidak lagi dijawab, isinya tetap ada |
+| Blokir / di luar cakupan | membuat aturan guard (lihat bagian berikut) |
+| Uji pertanyaan | melihat jawaban yang akan diterima pengunjung |
+
+Semua perubahan masuk ke `files/chatbot/faq.local.php`, **bukan** ke
+`config/chatbot.faq.php`; berkas isi asli tidak pernah diubah dari browser.
+Setiap penyimpanan divalidasi, ditulis atomik, menyimpan satu versi
+sebelumnya (bisa dikembalikan satu klik), dan dicatat di audit dengan nama
+staf.
+
+### Memblokir pertanyaan dan jawaban terlarang
+
+**System → Chatbot rules** memuat dua daftar:
+
+* aturan **question** dijalankan sebelum mesin intent: pesan yang diblokir
+  tidak pernah mencapai katalog atau layanan;
+* aturan **answer** menyaring isi FAQ saat dimuat dan setiap jawaban sebelum
+  ditampilkan, termasuk judul yang datang dari katalog.
+
+Setiap aturan punya jenis (frasa, kata, atau regex maksimal 120 karakter),
+kategori, aksi (tolak, arahkan ke meja layanan, sembunyikan), dan **alasan
+wajib**. Pencocokan menormalkan dulu huruf besar/kecil, tanda baca, karakter
+tak terlihat, dan angka yang dipakai sebagai huruf, sehingga "b3bas  denda!!"
+tetap tertangkap. Halaman menampilkan berapa pertanyaan FAQ normal yang juga
+ikut diblokir oleh aturan itu — kalau angkanya besar, aturannya terlalu luas.
+
+Bawaannya kosong dan mati (`guard.enabled`), jadi pemasangan atau pembaruan
+tidak mengubah perilaku sampai administrator menyalakannya.
+
+### Mengukur mutu
+
+* `php index.php chatbot:eval` menjalankan korpus ~110 kalimat (Indonesia dan
+  Inggris, tiga peran) dan mencetak akurasi, toleransi salah ketik, paritas
+  bahasa, dan kontrak tampilan. Gagal (exit code 1) bila di bawah target.
+* `php index.php chatbot:eval --sweep` menampilkan precision/recall untuk
+  ambang FAQ 0.40–0.80, untuk membuktikan ambang bawaan bukan tebakan.
+* `CHATBOT_E2E=1 php index.php chatbot:e2e` menjalankan dialog baca-saja
+  terhadap basis data sungguhan (untuk staging).
+
 ### Transaksi selalu dua langkah
 
 Asisten tidak pernah langsung menulis. Permintaan transaksi dijawab dengan
@@ -389,6 +456,9 @@ Yang perlu dipahami:
 | Buku ada tetapi tidak ditemukan | judul disembunyikan dari OPAC (`opac_hide`) | cari dari akun staf, atau periksa status sembunyinya |
 | Hasil populer tampak tidak wajar | riwayat `loan` baru sebagian dimigrasi | wajar pada data uji; urutan mengikuti jumlah pinjaman yang tercatat |
 | Chat menjawab "tidak ada yang cocok" untuk jam buka | `config/chatbot.faq.php` belum ada atau `faq.enabled` mati | jalankan `php index.php chatbot:faq`, lalu salin contohnya |
+| Halaman riwayat kosong | belum ada percakapan atau `log.enabled` mati | cek `php index.php chatbot:log`, nyalakan blok `log` |
+| Semua pertanyaan ditolak dengan kalimat yang sama | satu aturan answer terlalu luas | buka **Chatbot rules**, lihat kolom "Memblokir", persempit polanya |
+| Perbaikan tidak bisa disimpan | `files/chatbot` tidak bisa ditulis PHP | beri izin tulis, atau set `faq.overlay_file` |
 | Webhook menjawab `404 CHATBOT_DISABLED` | `channel.enabled` mati atau `token` kosong | isi keduanya, lalu simpan ulang |
 | Webhook menjawab `401 UNAUTHORIZED` | header token salah atau gateway tidak mengirimnya | samakan dengan `channel.token` |
 | Balasan selalu "masuk ke area anggota" | nomor/chat id belum terdaftar | tambahkan ke `channel.members` atau `channel.staff` |

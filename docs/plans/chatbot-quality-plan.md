@@ -6,6 +6,41 @@
 
 ---
 
+## Status implementasi (diperbarui 2026-11-27)
+
+Seluruh fase sudah dikerjakan di branch PR #1, dengan penyimpangan kecil yang
+dicatat di bawah.
+
+| Fase | Status | Bukti |
+|---|---|---|
+| 0 — riwayat | selesai | `Support/LogStore.php`, `Commands/ChatbotLog.php`, `log` block |
+| 1 — halaman riwayat | selesai | `Support/History.php`, `pages/history.php`, menu System |
+| 2 — perbaikan | selesai | `Support/Overlay.php`, `pages/review.php`, feedback 👍/👎 |
+| 3 — blokir | selesai | `Support/Guard.php`, `pages/rules.php`, saringan jawaban |
+| 4 — pengukuran | selesai | `tests/corpus.php` (109 kalimat), `Support/Evaluation.php`, `Commands/ChatbotEval.php` |
+| 5 — uji lapangan | sebagian | angka mingguan di halaman riwayat (selesai); `Commands/ChatbotE2e.php` tersedia tetapi belum dijalankan terhadap DB sungguhan |
+
+Tes offline naik dari **111 menjadi 178 asersi**.
+
+### Penyimpangan yang perlu diketahui
+
+1. **Nama flag staf** memakai kunci datar `admin_history`, `admin_overlay`,
+   `admin_rules`, bukan `admin.history`. `admin` sudah dipakai sebagai saklar
+   permukaan chat, jadi blok bersarang akan merusak `Config::enabled('admin')`.
+2. **Teks jawaban tidak disimpan** di log, hanya intent, entri FAQ, dan
+   latensi. Menyimpan jawaban penuh menggandakan risiko PII dan ukuran berkas;
+   halaman detail menampilkan apa yang tercatat, bukan transkrip balasan.
+3. **Retensi dihitung per bulan**, bukan per baris: berkas bulan yang lebih tua
+   dari `log.retention_days` dihapus. Rotasi ukuran membuat berkas bulan
+   berjalan terpecah tanpa menghapus rekaman terbaru.
+4. **Sweep ambang di suite** dijalankan pada tiga titik (0.56/0.62/0.68) agar
+   tetap cepat; sweep penuh 0.40–0.80 tersedia lewat `chatbot:eval --sweep`.
+5. **`hide` hanya untuk aturan jawaban**; aturan pertanyaan memakai `refuse`
+   atau `fallback`. Ini ditegakkan saat validasi.
+6. **Uji E2E live** berbentuk perintah `chatbot:e2e` (baca-saja, butuh
+   `CHATBOT_E2E=1`), bukan skrip docker terpisah; menjalankannya butuh
+   pemasangan SLiMS berdata.
+
 ## 1. Masalah yang diselesaikan
 
 | Gejala | Penyebab sekarang | Fase |
