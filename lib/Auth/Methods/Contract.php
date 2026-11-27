@@ -59,6 +59,11 @@ abstract class Contract implements Countable
      */
     public function generateSession()
     {
+        if ($this->type === self::MEMBER_LOGIN || array_key_exists('mid', $this->data)) {
+            require_once dirname(__DIR__, 2) . '/member_owner_guard.inc.php';
+            \slims_require_php_member_owner();
+        }
+
         foreach($this->data as $key => $value) {
             $_SESSION[$key] = $value;
         }
@@ -95,6 +100,11 @@ abstract class Contract implements Countable
 
     public function __call($method, $arguments)
     {
+        if (strcasecmp($method, 'member') === 0) {
+            require_once dirname(__DIR__, 2) . '/member_owner_guard.inc.php';
+            \slims_require_php_member_owner();
+        }
+
         if (method_exists($this, $fixMethod = $method . 'Authenticate')) {
             return $this->$fixMethod(...$arguments);
         }

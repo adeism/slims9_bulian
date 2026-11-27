@@ -1,0 +1,10 @@
+body { font: 14px sans-serif; margin: 2rem; color: #111; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #aaa; padding: .5rem; text-align: left; overflow-wrap: anywhere; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+h2 { break-after: avoid; }
+@media print {
+  .screen-only { display: none; }
+  body { margin: 0; }
+}

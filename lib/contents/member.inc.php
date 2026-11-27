@@ -29,6 +29,10 @@ use SLiMS\Auth\Validator;
 use SLiMS\Captcha\Factory as Captcha;
 use Volnix\CSRF\CSRF;
 
+// Guard legacy member operations even when included outside index.php.
+require_once dirname(__DIR__) . '/member_owner_guard.inc.php';
+slims_require_php_member_owner();
+
 // be sure that this file not accessed directly
 if (!defined('INDEX_AUTH')) {
     die("can not access this file directly");

@@ -363,6 +363,10 @@ if (isset($_POST['quickReturnID']) AND $_POST['quickReturnID']) {
 
 // add reservation
 if (isset($_POST['reserveItemID'])) {
+    // Rust owns new reservation creation after cutover. Existing circulation
+    // fulfillment/deletion remains operational; all writers still need review.
+    require_once LIB . 'member_owner_guard.inc.php';
+    slims_require_php_member_owner();
     $item_id = $dbs->escape_string(trim($_POST['reserveItemID']));
     if (!$item_id) {
         toastr(__('NO DATA Selected to reserve!'))->error();
