@@ -10,6 +10,7 @@ files/*
 !files/membercard/*
 repository/*
 config/*
+!config/cli_anything.sample.php
 cache/*
 .DS_Store
 ._.*
@@ -26,6 +27,8 @@ slims8_akasia.sublime-workspace
 
 plugins/*
 !plugins/read_counter/
+!plugins/Commands/
+!plugins/cli_anything/
 
 template/*
 
@@ -59,3 +62,11 @@ tarsius
 
 .env
 .htaccess
+
+# CLI-Anything harness (python)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+cli-anything/build/
+cli-anything/dist/
