@@ -40,6 +40,7 @@
         var csrf = root.getAttribute('data-csrf') || '';
         var strings = parseJson(root.getAttribute('data-strings'), {});
         var chips = parseJson(root.getAttribute('data-chips'), []);
+        var feedbackOn = root.getAttribute('data-feedback') === '1';
         var log = root.querySelector('.chatbot__log');
         var chipBar = root.querySelector('.chatbot__chips');
         var form = root.querySelector('.chatbot__form');
@@ -212,7 +213,52 @@
             container.appendChild(row);
         }
 
-        function appendBot(text, blocks, pending, tone) {
+        function sendFeedback(req, value, row) {
+            row.textContent = '';
+
+            fetch(endpoint, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrf,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ csrf_token: csrf, feedback: value, req: req })
+            }).then(readResponse).then(function (result) {
+                var ok = result.status >= 200 && result.status < 300 && result.data && result.data.ok === true;
+                row.appendChild(el('span', 'chatbot__feedback-done', ok
+                    ? (strings.feedback_thanks || 'Thank you.')
+                    : (strings.network || 'Network error')));
+            }).catch(function () {
+                row.appendChild(el('span', 'chatbot__feedback-done', strings.network || 'Network error'));
+            });
+        }
+
+        function renderFeedback(container, meta) {
+            if (!feedbackOn || !meta || !meta.request) {
+                return;
+            }
+
+            var row = el('div', 'chatbot__feedback');
+            var req = String(meta.request);
+
+            [
+                ['up', strings.feedback_up || 'Helpful'],
+                ['down', strings.feedback_down || 'Not helpful']
+            ].forEach(function (pair) {
+                var button = el('button', 'chatbot__feedback-btn', pair[1]);
+                button.setAttribute('type', 'button');
+                button.addEventListener('click', function () {
+                    sendFeedback(req, pair[0], row);
+                });
+                row.appendChild(button);
+            });
+
+            container.appendChild(row);
+        }
+
+        function appendBot(text, blocks, pending, tone, meta) {
             var body = message('bot', text);
 
             if (tone === 'warn' || tone === 'error') {
@@ -221,6 +267,14 @@
 
             renderBlocks(body, blocks);
             renderPending(body, pending);
+
+            if (pending && pending.token) {
+                // A confirmation is a question, not an answer: no thumbs.
+                scrollDown();
+                return;
+            }
+
+            renderFeedback(body, meta);
             scrollDown();
         }
 
@@ -281,7 +335,8 @@
                     (data.reply && data.reply.text) || '',
                     (data.reply && data.reply.blocks) || [],
                     data.pending,
-                    data.meta && data.meta.tone
+                    data.meta && data.meta.tone,
+                    data.meta
                 );
 
                 if (Array.isArray(data.suggestions) && data.suggestions.length) {

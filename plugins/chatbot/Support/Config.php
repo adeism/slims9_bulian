@@ -42,6 +42,12 @@ final class Config
             'allow_admin_write' => false,
             'allow_member_write' => false,
 
+            // Staff surfaces beyond the chat itself. Each one is a separate
+            // menu entry and can be switched off on its own.
+            'admin_history' => true,   // System -> Chatbot: history
+            'admin_overlay' => true,   // System -> Chatbot: review (fix answers)
+            'admin_rules' => true,     // System -> Chatbot: rules (block lists)
+
             // Never expose unmasked patron PII through the chat.
             'allow_pii_reveal' => false,
 
@@ -110,6 +116,28 @@ final class Config
                 'threshold' => 0.62,
                 // How many other questions to offer after an answer.
                 'topics' => 3,
+            ],
+
+            // Conversation log. One append-only NDJSON file per month under
+            // files/chatbot, each starting with a PHP exit guard: no table,
+            // no schema change. Feedback is its own record, merged on read.
+            // See plugins/chatbot/README.md#history.
+            'log' => [
+                'enabled' => true,
+                // Directory; empty = SB files/chatbot.
+                'dir' => '',
+                // Keep nothing older than this (monthly granularity).
+                'retention_days' => 90,
+                // Rotate one month file above this size.
+                'max_bytes' => 5242880,
+                // Rotated parts kept per month file.
+                'max_files' => 6,
+                // false = only a hash of the question, never its text.
+                'store_message' => true,
+                // Longest question stored, in characters.
+                'truncate' => 300,
+                // Thumbs up/down on answers.
+                'feedback' => true,
             ],
 
             // Messaging channel webhook (WhatsApp Cloud, Telegram, or a

@@ -37,6 +37,8 @@ final class SelfTest
         self::writes($cases);
         self::search($cases);
         self::faq($cases);
+        self::logs($cases);
+        self::history($cases);
         self::channels($cases);
         self::stock($cases);
         self::http($cases);
@@ -871,6 +873,517 @@ final class SelfTest
         );
     }
 
+
+    /**
+     * Conversation log: what is stored, what is dropped, and how it is read.
+     *
+     * @param array $cases
+     * @return void
+     */
+    private static function logs(array &$cases)
+    {
+        $_SESSION = [];
+        RateLimit::reset();
+
+        $dir = self::tempDir('log');
+        $config = self::config();
+        $config['log'] = array_merge($config['log'], [
+            'dir' => $dir,
+            'retention_days' => 90,
+            'max_bytes' => 10240,
+            'store_message' => true,
+            'truncate' => 300,
+        ]);
+
+        $log = new LogStore($config);
+        $req = 'abcd1234';
+        $stored = $log->record([
+            'req' => $req,
+            'surface' => 'opac',
+            'role' => 'member',
+            'actor_id' => 'M-000123',
+            'locale' => 'id',
+            'q' => 'pinjaman saya',
+            'intent' => 'my.loans',
+            'ms' => 42,
+        ]);
+
+        $rows = $log->records();
+        $raw = (string)@file_get_contents($dir . '/log-' . gmdate('Ym') . '.ndjson.php');
+
+        self::add(
+            $cases,
+            'log: a message is stored with its intent and latency',
+            $stored && count($rows) === 1
+                && $rows[0]['intent'] === 'my.loans'
+                && (int)$rows[0]['ms'] === 42
+                && $rows[0]['surface'] === 'opac',
+            json_encode($rows[0] ?? [])
+        );
+
+        self::add(
+            $cases,
+            'log: the file starts with a PHP exit guard',
+            strpos($raw, '<?php exit; ?' . '>') === 0
+                && strpos($raw, "\n{") !== false,
+            substr($raw, 0, 40)
+        );
+
+        self::add(
+            $cases,
+            'log: no member id, only a salted hash',
+            strpos($raw, 'M-000123') === false
+                && strlen((string)($rows[0]['actor'] ?? '')) === 16
+                && $rows[0]['actor'] !== $rows[0]['q'],
+            json_encode($rows[0]['actor'] ?? null)
+        );
+
+        $second = new LogStore($config);
+        $second->record(['surface' => 'opac', 'role' => 'member', 'actor_id' => 'M-000123', 'q' => 'halo']);
+        $second->record(['surface' => 'opac', 'role' => 'guest', 'actor_id' => '', 'q' => 'halo']);
+
+        $rows = $log->records();
+        $hashes = [];
+
+        foreach ($rows as $row) {
+            if ($row['role'] === 'member') {
+                $hashes[] = (string)$row['actor'];
+            }
+        }
+
+        self::add(
+            $cases,
+            'log: the same actor keeps one hash across messages',
+            count($hashes) === 2 && count(array_unique($hashes)) === 1 && $hashes[0] !== '',
+            json_encode($hashes)
+        );
+
+        $log->feedback($req, 'up', ['surface' => 'opac', 'role' => 'member', 'actor_id' => 'M-000123']);
+        $merged = $log->records();
+        $tagged = null;
+
+        foreach ($merged as $candidate) {
+            if ((string)($candidate['req'] ?? '') === $req) {
+                $tagged = $candidate;
+            }
+        }
+
+        self::add(
+            $cases,
+            'log: feedback is appended and merged onto its message',
+            is_array($tagged) && ($tagged['feedback'] ?? '') === 'up',
+            json_encode($tagged)
+        );
+
+        self::add(
+            $cases,
+            'log: an unknown feedback value is refused',
+            !$log->feedback($req, 'great', []) && !$log->feedback('nope', 'up', [])
+        );
+
+        $quiet = $config;
+        $quiet['log'] = array_merge($config['log'], ['store_message' => false]);
+        $quietLog = new LogStore($quiet);
+        $quietLog->record(['surface' => 'opac', 'role' => 'guest', 'q' => 'rahasia sekali']);
+        $quietRows = $quietLog->records(['limit' => 1]);
+
+        self::add(
+            $cases,
+            'log: store_message=false keeps only a hash',
+            ($quietRows[0]['q'] ?? 'x') === '' && strlen((string)($quietRows[0]['q_hash'] ?? '')) === 16,
+            json_encode($quietRows[0] ?? [])
+        );
+
+        $long = $log->mask(str_repeat('a', 400));
+        self::add(
+            $cases,
+            'log: a long question is truncated',
+            Str::length($long) >= 297 && Str::length($long) <= 303
+                && substr($long, -3) === '…'
+                && substr($long, 0, 10) === str_repeat('a', 10),
+            (string)Str::length($long)
+        );
+
+        $summary = $log->summary();
+        self::add(
+            $cases,
+            'log: the summary counts answered, unanswered and feedback',
+            $summary['total'] >= 4
+                && $summary['faq'] === 0
+                && $summary['feedback_up'] === 1
+                && $summary['unanswered'] >= 1,
+            json_encode($summary)
+        );
+
+        $filtered = $log->records(['role' => 'guest']);
+        self::add(
+            $cases,
+            'log: filters narrow by role and limit',
+            count($filtered) >= 1
+                && count($log->records(['limit' => 1])) === 1
+                && count($log->records(['offset' => 1, 'limit' => 1])) === 1,
+            json_encode(array_column($log->records(['limit' => 1]), 'role'))
+        );
+
+        // ---- rotation -------------------------------------------------
+        $rotating = $config;
+        $rotating['log'] = array_merge($config['log'], ['max_bytes' => 10240, 'truncate' => 300]);
+        $rotateLog = new LogStore($rotating);
+
+        for ($index = 0; $index < 80; $index++) {
+            $rotateLog->record(['surface' => 'opac', 'role' => 'guest', 'q' => str_repeat('x', 280) . $index]);
+        }
+
+        $parts = glob($dir . '/log-' . gmdate('Ym') . '.ndjson.php*');
+        self::add(
+            $cases,
+            'log: a month file rotates instead of growing without limit',
+            is_array($parts) && count($parts) >= 2,
+            json_encode(array_map('basename', is_array($parts) ? $parts : []))
+        );
+
+        // ---- retention ------------------------------------------------
+        $old = $dir . '/log-202001.ndjson.php';
+        @file_put_contents($old, LogStore::GUARD . '{"kind":"message","ts":"2020-01-01T00:00:00+00:00"}' . "\n");
+        $removed = $rotateLog->prune(time());
+
+        self::add(
+            $cases,
+            'log: files older than the retention window are removed',
+            !file_exists($old) && $removed >= 1,
+            (string)$removed
+        );
+
+        // ---- a broken directory must not break the answer --------------
+        $broken = $config;
+        $broken['log'] = array_merge($config['log'], ['dir' => $dir . '/log-' . gmdate('Ym') . '.ndjson.php']);
+        $brokenLog = new LogStore($broken);
+        $ok = true;
+
+        try {
+            $ok = $brokenLog->record(['surface' => 'opac', 'role' => 'guest', 'q' => 'halo']);
+        } catch (\Throwable $error) {
+            $ok = false;
+        }
+
+        self::add(
+            $cases,
+            'log: an unwritable directory logs nothing and does not throw',
+            $ok === false,
+            (string)$brokenLog->directory()
+        );
+
+        // ---- HTTP pipeline ---------------------------------------------
+        $_SESSION = [];
+        RateLimit::reset();
+        $empty = self::tempDir('log-http');
+        $httpConfig = $config;
+        $httpConfig['log'] = array_merge($config['log'], ['dir' => $empty]);
+        $token = Http::token();
+
+        $response = Http::process(
+            ['message' => 'jam buka', 'csrf_token' => $token],
+            Actor::anonymous('guest'),
+            'opac',
+            new TestService(),
+            $httpConfig
+        );
+
+        $httpLog = new LogStore($httpConfig);
+        $httpRows = $httpLog->records();
+
+        self::add(
+            $cases,
+            'log: the HTTP endpoint records the question and its request id',
+            !empty($httpRows)
+                && $httpRows[0]['intent'] === Intent::FAQ
+                && $httpRows[0]['surface'] === 'opac'
+                && ($response['meta']['request'] ?? '') === $httpRows[0]['req']
+                && LogStore::validReq((string)$response['meta']['request']),
+            json_encode(['rows' => count($httpRows), 'meta' => $response['meta']['request'] ?? null])
+        );
+
+        $feedback = Http::process(
+            ['feedback' => 'down', 'req' => (string)$response['meta']['request'], 'csrf_token' => $token],
+            Actor::anonymous('guest'),
+            'opac',
+            new TestService(),
+            $httpConfig
+        );
+
+        self::add(
+            $cases,
+            'log: feedback over HTTP attaches to the earlier answer',
+            $feedback['ok'] === true && $feedback['feedback'] === 'down'
+                && $httpLog->records()[0]['feedback'] === 'down',
+            json_encode($feedback)
+        );
+
+        $badFeedback = Http::process(
+            ['feedback' => 'down', 'req' => 'nope', 'csrf_token' => $token],
+            Actor::anonymous('guest'),
+            'opac',
+            new TestService(),
+            $httpConfig
+        );
+
+        self::add(
+            $cases,
+            'log: feedback with an unknown request id is refused',
+            $badFeedback['ok'] === false && $badFeedback['error']['code'] === 'FEEDBACK_INVALID'
+        );
+
+
+        $view = View::render(Actor::anonymous('guest'), 'opac', 'index.php?p=chatbot&action=ask', '/assets/', $config);
+        $quietView = View::render(Actor::anonymous('guest'), 'opac', 'index.php?p=chatbot&action=ask', '/assets/', array_merge($config, [
+            'log' => array_merge($config['log'], ['feedback' => false]),
+        ]));
+
+        self::add(
+            $cases,
+            'log: the chat offers thumbs only when feedback is on',
+            strpos($view, 'data-feedback="1"') !== false
+                && strpos($view, 'data-feedback="0"') === false
+                && strpos($quietView, 'data-feedback="0"') !== false
+                && strpos($view, 'Not helpful') !== false,
+            substr($view, 0, 60)
+        );
+        // ---- channels ---------------------------------------------------
+        $_SESSION = [];
+        RateLimit::reset();
+        $channelDir = self::tempDir('log-channel');
+        $channelConfig = $config;
+        $channelConfig['log'] = array_merge($config['log'], ['dir' => $channelDir]);
+        $channelConfig['channel'] = array_merge($config['channel'], [
+            'enabled' => true,
+            'token' => 'secret',
+            'members' => ['whatsapp:628111' => '123'],
+            'storage_dir' => self::tempDir('channel-store'),
+        ]);
+
+        Channel::handle(
+            ['channel' => 'whatsapp', 'from' => '628111', 'text' => 'pinjaman saya'],
+            $channelConfig,
+            new TestService(),
+            ['X-Chatbot-Token' => 'secret']
+        );
+
+        $channelRows = (new LogStore($channelConfig))->records();
+
+        self::add(
+            $cases,
+            'log: a channel message is recorded with the channel as surface',
+            !empty($channelRows)
+                && $channelRows[0]['surface'] === 'whatsapp'
+                && $channelRows[0]['role'] === 'member'
+                && $channelRows[0]['intent'] === Intent::MY_LOANS,
+            json_encode($channelRows[0] ?? [])
+        );
+    }
+
+    /**
+     * A fresh, empty directory inside the system temp dir.
+     *
+     * @param string $suffix
+     * @return string
+     */
+    private static function tempDir(string $suffix): string
+    {
+        $dir = sys_get_temp_dir() . '/slims-chatbot-' . $suffix . '-' . getmypid();
+
+        if (is_dir($dir)) {
+            foreach ((array)glob($dir . '/*') as $file) {
+                if (is_file($file)) {
+                    @unlink($file);
+                }
+            }
+        } else {
+            @mkdir($dir, 0777, true);
+        }
+
+        return $dir;
+    }
+
+
+    /**
+     * The staff history page's read side: filters, paging, CSV and escaping.
+     *
+     * @param array $cases
+     * @return void
+     */
+    private static function history(array &$cases)
+    {
+        $now = time();
+        $filters = History::filters(['days' => '30', 'surface' => 'opac', 'role' => 'member', 'feedback' => 'down', 'q' => 'denda'], $now);
+
+        self::add(
+            $cases,
+            'history: query values become log filters',
+            $filters['days'] === 30
+                && $filters['since'] === $now - 30 * 86400
+                && $filters['surface'] === 'opac'
+                && $filters['role'] === 'member'
+                && $filters['feedback'] === 'down'
+                && $filters['q'] === 'denda',
+            json_encode($filters)
+        );
+
+        $broken = History::filters(['days' => '9999', 'feedback' => 'sideways', 'page' => '-4', 'q' => str_repeat('z', 90)], $now);
+
+        self::add(
+            $cases,
+            'history: bad filter values fall back instead of failing',
+            $broken['days'] === 7
+                && !isset($broken['feedback'])
+                && $broken['page'] === 1
+                && Str::length($broken['q']) === 60,
+            json_encode($broken)
+        );
+
+        $dir = self::tempDir('history');
+        $config = self::config();
+        $config['log'] = array_merge($config['log'], ['dir' => $dir, 'truncate' => 300]);
+        $log = new LogStore($config);
+
+        for ($index = 0; $index < 120; $index++) {
+            $log->record([
+                'surface' => $index % 2 === 0 ? 'opac' : 'whatsapp',
+                'role' => $index % 3 === 0 ? 'member' : 'guest',
+                'q' => 'pertanyaan nomor ' . $index,
+                'intent' => $index % 4 === 0 ? Intent::NONE : Intent::BIBLIO_LIST,
+                'ms' => $index,
+                'faq_id' => $index % 10 === 0 ? 'hours' : '',
+            ]);
+        }
+
+        $first = History::page($log, History::filters(['days' => 7], $now));
+        $last = History::page($log, History::filters(['days' => 7, 'page' => 9], $now));
+
+        self::add(
+            $cases,
+            'history: rows are paged, and a page beyond the end is clamped',
+            $first['pages'] === 3
+                && count($first['rows']) === 50
+                && $first['total'] === 120
+                && $last['page'] === 3
+                && count($last['rows']) === 20,
+            json_encode(['pages' => $first['pages'], 'rows' => count($first['rows']), 'last' => count($last['rows'])])
+        );
+
+        $second = History::page($log, History::filters(['days' => 7, 'page' => 2], $now));
+        $overlap = array_intersect(array_column($first['rows'], 'req'), array_column($second['rows'], 'req'));
+
+        self::add(
+            $cases,
+            'history: page two continues where page one stopped',
+            count($second['rows']) === 50 && $overlap === [],
+            json_encode(count($overlap))
+        );
+
+        $down = History::page($log, History::filters(['days' => 7, 'feedback' => 'down'], $now));
+        self::add(
+            $cases,
+            'history: a feedback filter only shows flagged answers',
+            $down['total'] === 0,
+            (string)$down['total']
+        );
+
+        $summary = History::summary($log, History::filters(['days' => 7], $now));
+
+        self::add(
+            $cases,
+            'history: the summary counts answered, unanswered and FAQ answers',
+            $summary['total'] === 120
+                && $summary['faq'] === 12
+                && $summary['unanswered'] === 24
+                && $summary['answered'] === 96
+                && $summary['answered_pct'] === 80.0,
+            json_encode($summary)
+        );
+
+        $csv = History::csv([[
+            'ts' => '2026-11-27T10:00:00+00:00',
+            'surface' => 'opac',
+            'role' => 'guest',
+            'intent' => 'none',
+            'faq_id' => '',
+            'guard' => '',
+            'feedback' => 'down',
+            'ms' => 12,
+            'q' => 'jam buka, "sabtu"',
+        ]]);
+
+        self::add(
+            $cases,
+            'history: CSV has a header and quotes commas and quotes',
+            strpos($csv, 'time,surface,role') === 0
+                && strpos($csv, '"jam buka, ""sabtu"""') !== false
+                && substr_count($csv, "\n") === 2,
+            $csv
+        );
+
+        $html = History::table([[
+            'req' => 'abcd1234',
+            'ts' => '2026-11-27T10:00:00+00:00',
+            'q' => '<script>alert(1)</script>',
+            'intent' => '<b>none</b>',
+            'surface' => 'opac',
+            'role' => 'guest',
+            'feedback' => 'down',
+            'ms' => 3,
+        ]], 'en', 'index.php?p=chatbot_history&days=7');
+
+        self::add(
+            $cases,
+            'history: table cells are escaped, including the message',
+            strpos($html, '<script>') === false
+                && strpos($html, '&lt;script&gt;') !== false
+                && strpos($html, 'req=abcd1234') !== false
+                && strpos($html, 'days=7') !== false,
+            substr($html, 0, 120)
+        );
+
+        $base = History::baseUrl('/index.php?p=chatbot_history&days=7&page=2&req=abcd1234&export=csv');
+        $next = History::withQuery($base, 'page', '3');
+
+        self::add(
+            $cases,
+            'history: pagination links keep the filters and drop the rest',
+            $base === '/index.php?p=chatbot_history&days=7'
+                && $next === '/index.php?p=chatbot_history&days=7&page=3',
+            $base . ' | ' . $next
+        );
+
+        $staff = ['role' => Policy::STAFF];
+        $guest = ['role' => Policy::GUEST];
+        $member = ['role' => Policy::MEMBER];
+        $off = array_merge($config, ['admin_history' => false]);
+        $noLog = array_merge($config, ['log' => array_merge($config['log'], ['enabled' => false])]);
+
+        self::add(
+            $cases,
+            'history: only staff with the flag can read it',
+            History::allowed($staff, $config) === true
+                && History::allowed($guest, $config) === false
+                && History::allowed($member, $config) === false
+                && History::allowed($staff, $off) === false
+                && History::allowed($staff, $noLog) === false,
+            json_encode([
+                History::allowed($staff, $off),
+                History::allowed($guest, $config),
+            ])
+        );
+
+        $detail = $log->records(['req' => $first['rows'][0]['req']]);
+
+        self::add(
+            $cases,
+            'history: a detail lookup finds exactly one conversation',
+            count($detail) === 1 && $detail[0]['req'] === $first['rows'][0]['req'],
+            json_encode(count($detail))
+        );
+    }
+
     /**
      * @param array $cases
      * @return void
@@ -1439,7 +1952,13 @@ final class SelfTest
      */
     private static function config(): array
     {
-        return array_merge(Config::defaults(), [
+        $defaults = Config::defaults();
+        $log = array_merge($defaults['log'], [
+            'dir' => sys_get_temp_dir() . '/slims-chatbot-log-' . getmypid(),
+        ]);
+
+        return array_merge($defaults, [
+            'log' => $log,
             'language' => 'en',
             'rate_limit_per_minute' => 200,
             'max_writes_per_hour' => 50,

@@ -77,6 +77,8 @@ final class Channel
         $actor = self::identity($message['channel'], $message['from'], $channelConfig);
         $key = $message['channel'] . '|' . $message['from'];
         $store = new ChannelStore($channelConfig);
+        $started = microtime(true);
+        $committed = false;
 
         try {
             if (!$store->allow($key, 'messages', (int)($config['rate_limit_per_minute'] ?? 20), 60, $now)) {
@@ -102,6 +104,7 @@ final class Channel
                     'name' => (string)($action['intent'] ?? ''),
                     'params' => (array)($action['params'] ?? []),
                 ]);
+                $committed = true;
             } elseif (self::isCancel($message['text'], $channelConfig)) {
                 $store->takeAction($key, $now);
 
@@ -115,6 +118,8 @@ final class Channel
                 }
             }
 
+            self::logMessage($message, $actor, $config, $locale, $response, $pending, $committed, $started);
+
             return self::answer(
                 (string)($response['role'] ?? $actor['role']),
                 self::render($response, $locale, $pending),
@@ -125,6 +130,49 @@ final class Channel
         } catch (\Throwable $error) {
             return self::failure('UNEXPECTED_ERROR', Lang::t($locale, 'error_generic'), 500);
         }
+    }
+
+    /**
+     * One row in the conversation log, with the channel as the surface.
+     *
+     * @param array  $message
+     * @param array  $actor
+     * @param array  $config
+     * @param string $locale
+     * @param array  $response
+     * @param bool   $pending
+     * @param bool   $committed
+     * @param float  $started
+     * @return void
+     */
+    private static function logMessage(
+        array $message,
+        array $actor,
+        array $config,
+        string $locale,
+        array $response,
+        bool $pending,
+        bool $committed,
+        float $started
+    ) {
+        $intent = (string)($response['meta']['intent'] ?? Intent::NONE);
+
+        $log = new LogStore($config);
+        $log->record([
+            'surface' => substr((string)$message['channel'], 0, 20),
+            'role' => (string)($response['role'] ?? $actor['role'] ?? 'guest'),
+            'actor_id' => (string)($actor['member_id'] ?? ($actor['id'] ?? '')),
+            'locale' => $locale,
+            'q' => (string)$message['text'],
+            'intent' => $intent,
+            'faq_id' => (string)($response['meta']['faq_id'] ?? ''),
+            'stage' => (string)($response['meta']['stage'] ?? ''),
+            'ms' => (int)round((microtime(true) - $started) * 1000),
+            'write' => Policy::isWrite($intent),
+            'confirm' => $committed ? 'committed' : ($pending ? 'planned' : ''),
+            'guard' => (string)($response['meta']['guard'] ?? ''),
+            'err' => !empty($response['ok']) ? '' : (string)($response['error']['code'] ?? ''),
+        ]);
     }
 
     /**

@@ -54,6 +54,9 @@ final class View
             'chips' => Lang::t($locale, 'ui_chips'),
             'greeting' => Lang::t($locale, 'greet_' . $role, self::placeholders($actor)),
             'placeholder' => Lang::t($locale, 'ui_placeholder'),
+            'feedback_up' => Lang::t($locale, 'ui_feedback_up'),
+            'feedback_down' => Lang::t($locale, 'ui_feedback_down'),
+            'feedback_thanks' => Lang::t($locale, 'ui_feedback_thanks'),
         ];
 
         $chips = Intent::chips($role, $locale);
@@ -68,6 +71,7 @@ final class View
             . ' data-csrf="' . self::e(Http::token()) . '"'
             . ' data-role="' . self::e($role) . '"'
             . ' data-locale="' . self::e($locale) . '"'
+            . ' data-feedback="' . (!empty($config['log']['enabled']) && !empty($config['log']['feedback']) ? '1' : '0') . '"'
             . ' data-strings="' . self::e(self::json($strings)) . '"'
             . ' data-chips="' . self::e(self::json($chips)) . '"'
             . '>';

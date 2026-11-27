@@ -100,6 +100,30 @@ final class Http
         $message = isset($input['message']) ? (string)$input['message'] : '';
         $confirm = isset($input['confirm']) ? (string)$input['confirm'] : null;
 
+        // Thumbs up/down: a separate POST that never runs the engine, so it
+        // cannot be used to smuggle a question past the rate limit.
+        if (isset($input['feedback'])) {
+            $log = new LogStore($config);
+            $req = (string)($input['req'] ?? '');
+            $value = in_array($input['feedback'], ['up', 'down'], true) ? (string)$input['feedback'] : '';
+
+            if ($value === '' || !LogStore::validReq($req) || !$log->feedback($req, $value, [
+                'surface' => $surfaceKey,
+                'role' => (string)($actor['role'] ?? 'guest'),
+                'actor_id' => (string)($actor['member_id'] ?? ($actor['id'] ?? '')),
+            ])) {
+                return [
+                    'ok' => false,
+                    'error' => [
+                        'code' => 'FEEDBACK_INVALID',
+                        'message' => Lang::t($locale, 'feedback_invalid'),
+                    ],
+                ];
+            }
+
+            return ['ok' => true, 'feedback' => $value, 'meta' => ['request' => $req]];
+        }
+
         if (trim($message) === '' && ($confirm === null || $confirm === '')) {
             return [
                 'ok' => false,
@@ -112,9 +136,41 @@ final class Http
             ];
         }
 
+        $started = microtime(true);
+        $req = LogStore::reqId();
+
         $engine = new Engine($actor, $config, $service);
         $response = $engine->handle($message, $confirm);
         $response['surface'] = $surface;
+
+        $intent = (string)($response['meta']['intent'] ?? Intent::NONE);
+        $confirmState = '';
+
+        if (!empty($response['pending'])) {
+            $confirmState = 'planned';
+        } elseif (!empty($response['meta']['confirmed'])) {
+            $confirmState = 'committed';
+        }
+
+        $log = new LogStore($config);
+        $log->record([
+            'req' => $req,
+            'surface' => $surfaceKey,
+            'role' => (string)($actor['role'] ?? 'guest'),
+            'actor_id' => (string)($actor['member_id'] ?? ($actor['id'] ?? '')),
+            'locale' => $locale,
+            'q' => $message,
+            'intent' => $intent,
+            'faq_id' => (string)($response['meta']['faq_id'] ?? ''),
+            'stage' => (string)($response['meta']['stage'] ?? ''),
+            'ms' => (int)round((microtime(true) - $started) * 1000),
+            'write' => Policy::isWrite($intent),
+            'confirm' => $confirmState,
+            'guard' => (string)($response['meta']['guard'] ?? ''),
+            'err' => $response['ok'] ? '' : (string)($response['error']['code'] ?? ''),
+        ]);
+
+        $response['meta']['request'] = $req;
 
         return $response;
     }

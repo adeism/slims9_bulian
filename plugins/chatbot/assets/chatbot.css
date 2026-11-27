@@ -426,3 +426,83 @@ a.chatbot__item-title:hover {
     border-left: 3px solid #a0aec0;
     border-radius: 3px;
 }
+
+
+/* Staff pages: history, review, rules. */
+.chatbot-admin { max-width: 1100px; }
+.chatbot-admin__numbers {
+    padding: 8px 12px;
+    background: #edf2f7;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.chatbot-admin__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    margin: 12px 0 18px;
+}
+.chatbot-admin__filters label {
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+    color: #4a5568;
+    gap: 3px;
+}
+.chatbot-admin__filters select,
+.chatbot-admin__filters input {
+    padding: 4px 6px;
+    font-size: 13px;
+}
+.chatbot-admin__misses,
+.chatbot-admin__detail {
+    margin: 0 0 20px;
+    padding: 10px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+}
+.chatbot-admin__misses h2,
+.chatbot-admin__detail h2 {
+    margin: 0 0 8px;
+    font-size: 16px;
+}
+.chatbot-admin__pager { margin-top: 10px; }
+
+table.chatbot-history {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+table.chatbot-history th,
+table.chatbot-history td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+    vertical-align: top;
+}
+table.chatbot-history th { background: #f7fafc; }
+table.chatbot-history small { color: #718096; }
+
+.chatbot__feedback {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+}
+.chatbot__feedback-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    color: #4a5568;
+    background: transparent;
+    border: 1px solid #cbd5e0;
+    border-radius: 10px;
+    cursor: pointer;
+}
+.chatbot__feedback-btn:hover,
+.chatbot__feedback-btn:focus {
+    background: #edf2f7;
+}
+.chatbot__feedback-done {
+    font-size: 11px;
+    color: #718096;
+}

@@ -45,6 +45,15 @@ if (!empty($chatbotConfig['admin'])) {
 }
 
 /*
+ * Staff history: `System -> Chatbot history`.
+ * Read-only view over the append-only conversation log, so problems can be
+ * found without reading files on the server.
+ */
+if (!empty($chatbotConfig['admin']) && !empty($chatbotConfig['admin_history'])) {
+    $plugin->registerMenu('system', 'Chatbot history', __DIR__ . '/pages/history.php');
+}
+
+/*
  * Messaging channel webhook: WhatsApp Cloud, Telegram, or a local gateway
  * posting {phone, message}. Inert unless it is enabled *and* a token is set,
  * exactly like the CLI-Anything HTTP bridge.
