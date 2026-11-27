@@ -85,6 +85,13 @@ Bila jawaban terasa "melenceng" ke topik lain, naikkan `threshold` sedikit
 (mis. `0.7`). Bila pertanyaan wajar tidak dijawab, turunkan ke `0.55` atau
 tambahkan kata kuncinya.
 
+Satu hal yang perlu diingat saat menulis kata kunci: **kata yang terlalu umum
+tidak menolong**. `harga`, `biaya`, `info`, dan sejenisnya hanya dihitung bila
+kata itu menjadi seluruh pertanyaan atau bagian dari frasa yang lebih panjang
+(`biaya keanggotaan`). Itu sebabnya "berapa harga tiket bus" tidak lagi
+dijawab dengan iuran anggota. Tulis frasa yang benar-benar diucapkan orang,
+bukan satu kata kunci yang lebar.
+
 FAQ **tidak** mengganggu perintah: pertanyaan seperti "pinjaman saya" atau
 "cari buku sejarah" tetap ditangani oleh mesin katalog dan sirkulasi, bukan
 oleh FAQ.

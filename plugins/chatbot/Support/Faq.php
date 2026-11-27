@@ -39,6 +39,18 @@ final class Faq
      */
     const MIN_COVERAGE = 0.3;
 
+    /**
+     * Words that say nothing about the topic on their own. "berapa harga tiket
+     * bus" was answered with the membership fee because "harga" is a keyword
+     * there. Such a word still counts when it is the whole question ("harga",
+     * "baya") or inside a phrase ("biaya keanggotaan"), which is how the
+     * entries keep working.
+     */
+    const WEAK_KEYWORDS = [
+        'biaya', 'harga', 'bayar', 'tarif', 'gratis', 'fee', 'cost', 'price',
+        'free', 'info', 'informasi', 'information',
+    ];
+
     /** @var array<string,array> loaded files, keyed by path+mtime */
     private static $cache = [];
 
@@ -498,6 +510,14 @@ final class Faq
             $phrase = self::normalise((string)$keyword);
 
             if ($phrase === '') {
+                continue;
+            }
+
+
+            // A topic-free word inside a longer sentence is not evidence
+            // that this entry is the topic. It still counts as the whole
+            // question or as part of a phrase below.
+            if (in_array($phrase, self::WEAK_KEYWORDS, true) && count($tokens) > 1) {
                 continue;
             }
 

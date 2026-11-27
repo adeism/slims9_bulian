@@ -17,11 +17,11 @@ dicatat di bawah.
 | 1 — halaman riwayat | selesai | `Support/History.php`, `pages/history.php`, menu System |
 | 2 — perbaikan | selesai | `Support/Overlay.php`, `pages/review.php`, feedback 👍/👎 |
 | 3 — blokir | selesai | `Support/Guard.php`, `pages/rules.php`, saringan jawaban |
-| 4 — pengukuran | selesai | `tests/corpus.php` (122 kalimat, 61 di antaranya non-FAQ), `Support/Evaluation.php`, `Commands/ChatbotEval.php` |
-| 5 — uji lapangan | sebagian | angka mingguan di halaman riwayat (selesai); `Commands/ChatbotE2e.php` tersedia tetapi belum dijalankan terhadap DB sungguhan |
+| 4 — pengukuran | selesai | `tests/corpus.php` (124 kalimat, 63 di antaranya non-FAQ), `Support/Evaluation.php`, `Commands/ChatbotEval.php` |
+| 5 — uji lapangan | selesai kecuali e2e berdata | papan angka mingguan (`p50`/`p95`, guard hits, 10 tak terjawab teratas) selesai; `Commands/ChatbotE2e.php` tersedia tetapi belum dijalankan terhadap DB sungguhan |
 
-Tes offline naik dari **111 menjadi 178 asersi**. Korpus berisi **122
-kalimat**: 61 mengharapkan jawaban FAQ (Indonesia dan Inggris) dan 61 menuntut
+Tes offline naik dari **111 menjadi 180 asersi**. Korpus berisi **124
+kalimat**: 61 mengharapkan jawaban FAQ (Indonesia dan Inggris) dan 63 menuntut
 mesin *tidak* menjawabnya lewat FAQ (pencarian, data anggota, sapaan, atau
 "tidak ada jawaban"). Akurasi 1.0, toleransi salah ketik 0.964 pada 168 varian,
 paritas bahasa dan kontrak tampilan tanpa temuan.

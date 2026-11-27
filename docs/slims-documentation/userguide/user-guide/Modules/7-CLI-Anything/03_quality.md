@@ -21,7 +21,7 @@ Yang bisa dilakukan:
   latensinya;
 * mengekspor CSV untuk rapat atau laporan;
 * membaca angka mingguan: persen terjawab, jumlah belum terjawab, 👍/👎,
-  latensi rata-rata, dan daftar pertanyaan yang paling sering ditanya tetapi
+  latensi p50/p95, aturan guard yang menolak, dan daftar pertanyaan yang paling sering ditanya tetapi
   tidak pernah terjawab.
 
 Yang **tidak** disimpan: nama anggota, nomor telepon, surel, alamat IP. Hanya
@@ -69,7 +69,7 @@ sebelumnya sampai administrator menyalakannya.
 
 ### Angka, bukan kesan
 
-* `php index.php chatbot:eval` — akurasi pada korpus 122 kalimat (Indonesia
+* `php index.php chatbot:eval` — akurasi pada korpus 124 kalimat (Indonesia
   dan Inggris, tiga peran), toleransi salah ketik, paritas bahasa, kontrak
   tampilan. Berakhir dengan kode 1 bila di bawah target.
 * `php index.php chatbot:eval --sweep` — tabel precision/recall ambang FAQ,

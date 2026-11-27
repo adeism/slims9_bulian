@@ -201,7 +201,7 @@ cp config/chatbot.sample.php config/chatbot.php
 cp plugins/chatbot/Support/faq.sample.php config/chatbot.faq.php   # optional
 php index.php plugin:list --type=all && php index.php plugin:activate <id>
 
-php index.php chatbot:selftest                      # 178 offline checks
+php index.php chatbot:selftest                      # 180 offline checks
 php index.php chatbot:ask "pinjaman terlambat"      # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
@@ -246,7 +246,7 @@ CSV, the week's numbers), **review** (unanswered and thumbs-down queue; add a
 keyword, create a draft entry, hide one, block a question, preview before
 saving, restore the previous version) and **rules** (blocked questions and
 forbidden answers, with an over-blocking count). Corrections land in an overlay
-file, never in `config/chatbot.faq.php`. `chatbot:eval` runs a 122-sentence
+file, never in `config/chatbot.faq.php`. `chatbot:eval` runs a 124-sentence
 corpus in both languages and gates on accuracy, typo tolerance, threshold
 stability, language parity and the render contract; `chatbot:e2e` replays
 read-only dialogues against the live database.
@@ -330,7 +330,7 @@ php plugins/chatbot/tests/run.php     # standalone runner
 php index.php chatbot:selftest        # inside SLiMS, same suite
 ```
 
-178 assertions cover the Indonesian/English intent table, role policy (guest,
+180 assertions cover the Indonesian/English intent table, role policy (guest,
 member, staff), confirmation replay/expiry/session binding, rate limits, the
 engine against a fake service, the HTTP pipeline (CSRF, empty message, disabled
 plugin), the WhatsApp/Telegram channel (payload shapes, allow-list identity,

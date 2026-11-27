@@ -98,7 +98,7 @@ class ChatbotLog extends CliAnythingCommand
             Lang::t($locale, 'history_total', ['count' => $summary['total']]),
             Lang::t($locale, 'history_answered', ['pct' => $summary['answered_pct']]),
             Lang::t($locale, 'history_unanswered', ['count' => $summary['unanswered']]),
-            Lang::t($locale, 'history_avg', ['ms' => $summary['avg_ms']])
+            Lang::t($locale, 'history_latency', ['p50' => $summary['p50_ms'], 'p95' => $summary['p95_ms']])
         ));
         $this->newLine();
 

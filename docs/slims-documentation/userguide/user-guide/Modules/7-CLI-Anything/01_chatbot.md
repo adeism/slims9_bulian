@@ -209,7 +209,7 @@ Staf membuka **System → Chatbot history**:
 * klik satu percakapan untuk melihat rinciannya;
 * ekspor CSV (tanpa data pribadi);
 * angka mingguan: persen terjawab, jumlah yang belum terjawab, 👍/👎, latensi
-  rata-rata, dan daftar pertanyaan yang paling sering ditanya tetapi tidak
+  p50/p95, aturan guard yang menolak, dan daftar pertanyaan yang paling sering ditanya tetapi tidak
   pernah terjawab.
 
 Dari terminal: `php index.php chatbot:log --days=7 --unanswered`.
@@ -254,7 +254,7 @@ tidak mengubah perilaku sampai administrator menyalakannya.
 
 ### Mengukur mutu
 
-* `php index.php chatbot:eval` menjalankan korpus 122 kalimat (Indonesia dan
+* `php index.php chatbot:eval` menjalankan korpus 124 kalimat (Indonesia dan
   Inggris, tiga peran) dan mencetak akurasi, toleransi salah ketik, paritas
   bahasa, dan kontrak tampilan. Gagal (exit code 1) bila di bawah target.
 * `php index.php chatbot:eval --sweep` menampilkan precision/recall untuk

@@ -76,7 +76,10 @@ if (isset($_GET['req']) && LogStore::validReq((string)$_GET['req'])) {
                 'up' => $chatbotSummary['feedback_up'],
                 'down' => $chatbotSummary['feedback_down'],
             ])) . ' · '
-            . $e(Lang::t($chatbotLocale, 'history_avg', ['ms' => $chatbotSummary['avg_ms']]));
+            . $e(Lang::t($chatbotLocale, 'history_latency', [
+                'p50' => $chatbotSummary['p50_ms'],
+                'p95' => $chatbotSummary['p95_ms'],
+            ]));
         ?>
     </p>
 

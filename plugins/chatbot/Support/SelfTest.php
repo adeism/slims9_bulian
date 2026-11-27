@@ -1018,6 +1018,28 @@ final class SelfTest
             json_encode($summary)
         );
 
+        $latencies = $config;
+        $latencies['log'] = array_merge($config['log'], ['dir' => self::tempDir('latency')]);
+        $latencyLog = new LogStore($latencies);
+
+        foreach ([10, 20, 30, 40, 50, 60, 70, 80, 90, 1000] as $value) {
+            $latencyLog->record(['surface' => 'opac', 'role' => 'guest', 'q' => 'halo', 'ms' => $value]);
+        }
+
+        $percentiles = $latencyLog->summary();
+        self::add(
+            $cases,
+            'log: the summary reports the slow tail, not only the average',
+            $percentiles['p50_ms'] === 50
+                && $percentiles['p95_ms'] === 1000
+                && $percentiles['avg_ms'] === 145,
+            json_encode([
+                'p50' => $percentiles['p50_ms'],
+                'p95' => $percentiles['p95_ms'],
+                'avg' => $percentiles['avg_ms'],
+            ])
+        );
+
         $filtered = $log->records(['role' => 'guest']);
         self::add(
             $cases,
@@ -2220,6 +2242,21 @@ final class SelfTest
             'faq: an unrelated question is left to the catalogue',
             is_null(Faq::match('sejarah indonesia', $config, 'id'))
                 && is_null(Faq::match('pinjamkan B00001 ke anggota 123', $config, 'id'))
+        );
+
+        $fee = Faq::match('biaya keanggotaan', $config, 'id');
+        self::add(
+            $cases,
+            'faq: a price word only counts as the question or inside a phrase',
+            is_null(Faq::match('berapa harga tiket bus', $config, 'id'))
+                && is_null(Faq::match('biaya kirim paket', $config, 'id'))
+                && !is_null($fee) && $fee['id'] === 'membership-fee'
+                && !is_null(Faq::match('harga', $config, 'id')),
+            json_encode([
+                'bus' => Faq::match('berapa harga tiket bus', $config, 'id'),
+                'paket' => Faq::match('biaya kirim paket', $config, 'id'),
+                'fee' => $fee['id'] ?? null,
+            ])
         );
 
         $english = Faq::match('opening hours', $config, 'en');

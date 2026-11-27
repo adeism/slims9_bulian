@@ -294,6 +294,7 @@ final class LogStore
         $up = 0;
         $down = 0;
         $ms = 0;
+        $times = [];
         $intents = [];
         $unanswered = [];
         $writes = 0;
@@ -301,6 +302,7 @@ final class LogStore
         foreach ($rows as $row) {
             $intent = (string)($row['intent'] ?? '');
             $ms += (int)($row['ms'] ?? 0);
+            $times[] = (int)($row['ms'] ?? 0);
             $intents[$intent === '' ? 'none' : $intent] = ($intents[$intent === '' ? 'none' : $intent] ?? 0) + 1;
 
             if ((string)($row['guard'] ?? '') !== '') {
@@ -349,9 +351,35 @@ final class LogStore
             'feedback_up' => $up,
             'feedback_down' => $down,
             'avg_ms' => $total > 0 ? (int)round($ms / $total) : 0,
+            'p50_ms' => self::percentile($times, 50),
+            'p95_ms' => self::percentile($times, 95),
             'intents' => array_slice($intents, 0, 8, true),
             'top_unanswered' => array_slice(array_values($unanswered), 0, 10),
         ];
+    }
+
+    /**
+     * Nearest-rank percentile of the recorded latencies.
+     *
+     * The average hides the slow tail: a chat that answers most questions in
+     * 40 ms but the slowest in 2 s looks fine on average and bad to the
+     * person waiting. The weekly board shows p50 and p95 next to it.
+     *
+     * @param array<int,int> $values milliseconds, in any order
+     * @param int $percent 1-100
+     * @return int
+     */
+    private static function percentile(array $values, int $percent): int
+    {
+        if ($values === []) {
+            return 0;
+        }
+
+        sort($values, SORT_NUMERIC);
+        $rank = (int)ceil($percent / 100 * count($values));
+        $index = max(0, min(count($values) - 1, $rank - 1));
+
+        return (int)$values[$index];
     }
 
     /**

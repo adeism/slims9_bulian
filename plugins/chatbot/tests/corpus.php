@@ -162,5 +162,7 @@ return [
     ['daftar pinjaman saya', 'member', 'intent:my.loans', 'member'],
     ['ringkasan koleksi', 'staff', 'intent:report.summary', 'staff'],
     ['jadwal kereta malam', 'guest', 'no-faq', 'negative'],
+    ['berapa harga tiket bus', 'guest', 'no-faq', 'negative'],
+    ['biaya kirim paket', 'guest', 'no-faq', 'negative'],
     ['cuaca hari ini bagaimana', 'guest', 'no-faq', 'negative'],
 ];

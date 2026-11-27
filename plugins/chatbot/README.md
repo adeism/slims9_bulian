@@ -257,7 +257,11 @@ donations and a lost card.
 
 * A keyword **phrase typed verbatim** ("jam buka", "nomor telepon") wins
   outright.
-* Otherwise a near-miss word is accepted when it matches at least 78% of a
+* A word that says nothing about the topic on its own (`harga`, `biaya`,
+  `info`, `free`) only counts when it *is* the question ("harga") or part of a
+  phrase ("biaya keanggotaan"). Without that rule, "berapa harga tiket bus"
+  was answered with the membership fee.
+* Otherwise a near-miss word is accepted when it matches at least 74% of a
   keyword word (`telepn` → `telepon`) **and** the recognized words cover at
   least 30% of what was typed. That guard is why
   `pinjamkan B00001 ke anggota 123` is not answered with the membership page
@@ -464,7 +468,7 @@ breaks an answer.
 
 * **System -> Chatbot history** (staff) filters by day range, surface, role,
   answered/unanswered, thumbs-down and text, drills into one conversation,
-  shows the week's numbers (answered %, misses, feedback, average latency) and
+  shows the week's numbers (answered %, misses, feedback, p50/p95 latency) and
   exports CSV.
 * `php index.php chatbot:log --days=7 --unanswered` is the same view for cron
   and for a terminal.
@@ -536,7 +540,7 @@ php index.php chatbot:eval --sweep    # precision/recall for thresholds 0.40-0.8
 CHATBOT_E2E=1 php index.php chatbot:e2e   # read-only dialogues against the live DB
 ```
 
-* `tests/corpus.php` holds 122 phrasings in Indonesian and English for the
+* `tests/corpus.php` holds 124 phrasings in Indonesian and English for the
   three roles, including negatives that must never be answered by the FAQ
   ("pinjamkan B00001 ke anggota 123", "pinjamkan…" as a guest, catalogue
   searches, member questions).
@@ -699,7 +703,7 @@ store — useful to reproduce what a gateway reported.
 ## Console equivalents
 
 ```bash
-php index.php chatbot:selftest                 # 178 offline checks, no DB
+php index.php chatbot:selftest                 # 180 offline checks, no DB
 php index.php chatbot:ask "pinjaman terlambat" # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
@@ -781,7 +785,7 @@ plugins/chatbot/
 │   ├── vendor/
 │   │   ├── CliAnything.php     copy of the service, stock-install fallback
 │   │   └── README.md           why it exists and how to re-sync it
-│   └── SelfTest.php            178 assertions
+│   └── SelfTest.php            180 assertions
 ├── pages/
 │   ├── opac.php                ?p=chatbot (guest + member)
 │   ├── admin.php               System -> Chatbot (staff)
