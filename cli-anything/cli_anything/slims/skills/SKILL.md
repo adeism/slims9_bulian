@@ -126,6 +126,6 @@ cli-anything-slims --json report summary
   `config/cli_anything.php`, so the bridge plugin registers no routes.
 * `BAD_RESPONSE` with HTML — the URL points at the OPAC instead of the bridge;
   the path must be `<base>/index.php?p=api/cli-anything/v1/...`.
-* `BAD_RESPONSE` with `tarsius exited ...` — run `php tarsius tarsius` once to
-  create the console entry point, and check that PHP CLI has `mysqli`,
-  `mbstring` and `gettext`.
+* `BAD_RESPONSE` with `tarsius exited ...` — check that PHP CLI has `mysqli`,
+  `mbstring` and `gettext`. The local backend runs `php index.php ...` (or
+  `php tarsius ...` when that shortcut exists).

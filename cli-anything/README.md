@@ -11,8 +11,8 @@ agent / librarian
         │  cli-anything-slims  (Python, this package)
         ├─────────────► HTTP bridge plugin        (plugins/cli_anything)
         │                 index.php?p=api/cli-anything/v1/...
-        └─────────────► tarsius console commands  (plugins/Commands)
-                          php tarsius clianything:...
+        └─────────────► SLiMS console commands    (plugins/Commands)
+                          php index.php clianything:...
                                     │
                               SLiMS core ──► member / circulation classes ──► MySQL
 ```
@@ -33,6 +33,7 @@ export SLIMS_CLI_ANYTHING_TOKEN="<token from config/cli_anything.php>"
 
 # B) local: run the bundled console commands on the server
 export SLIMS_ROOT="/var/www/slims"
+# uses <root>/tarsius when it exists, otherwise <root>/index.php
 ```
 
 Both transports return the same envelope, so a workflow can be moved from a

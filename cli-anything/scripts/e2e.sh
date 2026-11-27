@@ -9,7 +9,7 @@
 # What it does:
 #   1. boots docker compose (SLiMS + MariaDB, sample data)
 #   2. writes config/cli_anything.php with a random token, writes enabled
-#   3. activates the bridge plugin and creates the tarsius entry point
+#   3. activates the bridge plugin
 #   4. seeds a throw-away patron CLI0001
 #   5. checks the local (tarsius) and remote (HTTP) backends
 #   6. runs checkout as dry run, then commit, then checks the item back in
@@ -84,9 +84,6 @@ return [
 ];
 PHP
 
-echo "==> creating the tarsius entry point"
-docker compose exec -T slims php tarsius tarsius
-
 echo "==> activating the CLI-Anything Bridge plugin"
 db "INSERT INTO plugins (id, path, options, created_at, deleted_at, uid)
     VALUES (MD5('${APP}/plugins/cli_anything/cli_anything.plugin.php'),
@@ -100,8 +97,8 @@ db "INSERT INTO member (member_id, member_name, gender, member_type_id, member_e
             CURDATE(), DATE_ADD(CURDATE(), INTERVAL 365 DAY), CURDATE(), CURDATE())
     ON DUPLICATE KEY UPDATE member_name = VALUES(member_name);"
 
-echo "==> local backend: tarsius doctor"
-docker compose exec -T slims php tarsius clianything:doctor --json > /tmp/cli-anything-doctor.json
+echo "==> local backend: console doctor (php index.php ...)"
+docker compose exec -T slims php index.php clianything:doctor --json > /tmp/cli-anything-doctor.json
 python3 - <<'PY'
 import json
 

@@ -20,6 +20,7 @@ and raise :class:`BackendError` for ``{"ok": false, ...}`` payloads.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 from typing import Any, Dict, Iterable, Mapping, Optional, Tuple
@@ -216,7 +217,14 @@ class TarsiusBackend(Backend):
             raise ValueError("slims_root is required for the tarsius backend")
         self.slims_root = slims_root.rstrip("/")
         self.php_binary = php_binary
-        self.tarsius = tarsius or f"{self.slims_root}/tarsius"
+        # `php tarsius ...` is the shortcut introduced by the Console docs, but
+        # it only exists after `php index.php tarsius` has been run once.
+        # `php index.php ...` always works, so fall back to it.
+        if tarsius:
+            self.tarsius = tarsius
+        else:
+            shortcut = f"{self.slims_root}/tarsius"
+            self.tarsius = shortcut if os.path.exists(shortcut) else f"{self.slims_root}/index.php"
         self.timeout = timeout
 
     def build_argv(self, command: str, params: Mapping[str, Any]) -> list:

@@ -235,7 +235,7 @@ class CliAnything
             [
                 'name' => 'tarsius_console',
                 'ok' => file_exists(SB . 'tarsius') || file_exists(LIB . 'Cli' . DS . 'tarsius.console'),
-                'detail' => 'Run `php tarsius tarsius` to create the console entry point.',
+                'detail' => 'Console runs via `php index.php <command>`; `php index.php tarsius` creates the shorter `php tarsius <command>` shortcut.',
             ],
         ];
 

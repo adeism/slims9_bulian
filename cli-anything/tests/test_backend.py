@@ -98,7 +98,8 @@ def test_tarsius_argv_checkout_with_commit():
     argv = backend.build_argv("loan.checkout", {"member": "M1", "items": "B1,B2", "commit": True})
 
     assert argv[0] == "php"
-    assert argv[1].endswith("/tarsius")
+    # /var/www/slims does not exist here, so the backend falls back to index.php
+    assert argv[1].endswith(("/tarsius", "/index.php"))
     assert argv[2] == "clianything:loan:checkout"
     assert "--member=M1" in argv
     assert "--items=B1,B2" in argv
@@ -164,3 +165,24 @@ def test_build_backend_without_configuration_fails():
         build_backend()
 
     assert caught.value.code == "NO_BACKEND"
+
+
+def test_tarsius_prefers_tarsius_shortcut_when_present(tmp_path):
+    (tmp_path / "tarsius").write_text("#!/usr/bin/env php\n")
+    (tmp_path / "index.php").write_text("<?php\n")
+
+    backend = TarsiusBackend(str(tmp_path))
+
+    assert backend.tarsius.endswith("/tarsius")
+
+
+def test_tarsius_falls_back_to_index_php(tmp_path):
+    (tmp_path / "index.php").write_text("<?php\n")
+
+    backend = TarsiusBackend(str(tmp_path))
+
+    assert backend.tarsius.endswith("/index.php")
+
+    argv = backend.build_argv("doctor", {})
+    assert argv[1].endswith("/index.php")
+    assert argv[2] == "clianything:doctor"
