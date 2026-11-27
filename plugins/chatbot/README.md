@@ -433,13 +433,121 @@ bot:   Rencana saja, belum ada yang ditulis
 | `max_message_length` | `500` | longer messages are refused |
 | `result_limit` | `5` | rows shown per answer |
 | `search` | ranked defaults | weights, typo stage, suggestions, see [Tuning](#tuning) |
-| `faq` | on, sample | content file, threshold, alternatives, see [FAQ](#faq) |
+| `faq` | on, sample | content file, threshold, alternatives, staff overlay, see [FAQ](#faq) |
+| `log` | on, 90 days | conversation log, size and retention, see [History](#history) |
+| `guard` | off | blocked questions and forbidden answers, see [Rules](#rules-blocked-questions-and-answers) |
+| `admin_history` | `true` | System -> Chatbot history page |
+| `admin_overlay` | `true` | System -> Chatbot review page (corrections) |
+| `admin_rules` | `true` | System -> Chatbot rules page |
 | `channel` | off | WhatsApp/Telegram webhook, see [Messaging channels](#messaging-channels) |
 
 Turning a gate on still requires `allow_write` in `config/cli_anything.php`;
 the chat never opens what the CLI keeps closed. Writes and the webhook are the
 only two things that change behaviour after installation — everything else is
 read-only and can be switched off without touching the database.
+
+## History
+
+Every message that goes through the browser endpoint or a messaging channel
+leaves one row in an append-only log:
+
+```
+files/chatbot/log-YYYYMM.ndjson.php     one file per month, rotated at 5 MB
+```
+
+No table, no schema change. Each row holds the surface, the role, the intent,
+the FAQ entry, the latency, the confirmation state and the guard rule that
+fired. It deliberately does **not** hold a member id (only a salted hash), a
+name, an e-mail or an IP; the question is cut to `log.truncate` characters, or
+reduced to a hash when `log.store_message` is false. A failed write never
+breaks an answer.
+
+* **System -> Chatbot history** (staff) filters by day range, surface, role,
+  answered/unanswered, thumbs-down and text, drills into one conversation,
+  shows the week's numbers (answered %, misses, feedback, average latency) and
+  exports CSV.
+* `php index.php chatbot:log --days=7 --unanswered` is the same view for cron
+  and for a terminal.
+* Thumbs up/down on an answer (OPAC and channels) attach to the original row
+  by request id, so `--feedback=down` is a real queue.
+
+Retention defaults to 90 days, pruned by month; `chatbot:log --prune` runs it
+on demand.
+
+## Review and corrections
+
+**System -> Chatbot review** turns the log into fixes. The page lists what was
+asked and never answered (30 days) and what was marked unhelpful, and offers:
+
+| Action | What it writes |
+| --- | --- |
+| add a keyword | an extra phrase for an existing entry |
+| new entry | a whole entry, **draft** until activated |
+| hide / show | hides an entry without editing the content file |
+| block / out of scope | a guard rule (see below) |
+| test a question | what the chat would answer right now |
+
+Corrections go to `files/chatbot/faq.local.php`, never to
+`config/chatbot.faq.php`:
+
+```php
+return [
+    'keywords' => ['hours' => ['buka sabtu']],
+    'entries'  => [/* id, question, keywords, answer, link, status */],
+    'hidden'   => ['donation'],
+];
+```
+
+Every save is validated, written atomically (temp file + rename), keeps one
+`.bak`, can be restored with one click, and appends to
+`files/chatbot/audit.ndjson.php` with the staff label. Preview runs the matcher
+against the candidate overlay before anything is written, so "what will a guest
+see" is answered first. `faq.overlay=false` returns to the plain content file.
+
+## Rules: blocked questions and answers
+
+**System -> Chatbot rules** holds the two lists the library controls:
+
+* **question** rules run before the rule table: a blocked message never reaches
+  the catalogue or the service;
+* **answer** rules run on FAQ content at load time and on every reply before it
+  is shown, including the visible strings of a service result, so a forbidden
+  sentence cannot arrive inside a title.
+
+Each rule has a scope, a type (`phrase`, `word`, or a regex limited to 120
+characters and compile-checked on save), a category, an action
+(`refuse`, `fallback`, `hide`) and a mandatory reason. Matching normalises
+first — case, punctuation, zero-width characters, collapsed spaces, and digits
+used as letters — so `b3bas  denda!!` hits the same rule as `bebas denda`,
+while an ordinary sentence about fines does not.
+
+The page shows how many of the library's own FAQ questions each rule would also
+block: a rule that hits normal questions is visibly too broad. Everything is
+empty and inert by default (`guard.enabled` is false), so upgrading changes
+nothing until an administrator adds a rule and turns the guard on.
+
+## Measurement
+
+Not "it worked when I tried it", but numbers:
+
+```bash
+php index.php chatbot:eval            # corpus accuracy, typo tolerance, parity, render contract
+php index.php chatbot:eval --sweep    # precision/recall for thresholds 0.40-0.80
+CHATBOT_E2E=1 php index.php chatbot:e2e   # read-only dialogues against the live DB
+```
+
+* `tests/corpus.php` holds ~110 phrasings in Indonesian and English for the
+  three roles, including negatives that must never be answered by the FAQ
+  ("pinjamkan B00001 ke anggota 123", "pinjamkan…" as a guest, catalogue
+  searches, member questions).
+* Targets: accuracy >= 95%, **zero** negative misses, typo tolerance >= 90% of
+  one-edit keyword variants, the default threshold `0.62` must sit on a
+  precision/recall plateau, both languages must carry the same keys and
+  placeholders, and every rendered answer must have text, well-formed blocks
+  and no unresolved `:placeholder`.
+* `chatbot:eval` exits non-zero when a target is missed, so a release can be
+  gated on it. `chatbot:e2e` refuses to run without `CHATBOT_E2E=1` and only
+  performs reads.
 
 ## HTTP contract
 
@@ -591,15 +699,21 @@ store — useful to reproduce what a gateway reported.
 ## Console equivalents
 
 ```bash
-php index.php chatbot:selftest                 # 111 offline checks, no DB
+php index.php chatbot:selftest                 # 178 offline checks, no DB
 php index.php chatbot:ask "pinjaman terlambat" # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
 php index.php chatbot:ask "buku populer"                    # sort=popular
 php index.php chatbot:ask "cari sejarh"                     # typo-tolerant
 php index.php chatbot:faq                                   # FAQ content check
+php index.php chatbot:faq --strict                          # + sample values, hidden entries
 php index.php chatbot:ask "jam buka"                        # FAQ answer
 php index.php chatbot:ask "ringkasan hari ini" --json
+php index.php chatbot:log --days=7 --unanswered             # the week's misses
+php index.php chatbot:log --prune                           # apply retention
+php index.php chatbot:eval                                  # accuracy + typo tolerance
+php index.php chatbot:eval --sweep                          # threshold table
+CHATBOT_E2E=1 php index.php chatbot:e2e                     # live-DB smoke test
 ```
 
 `--commit` is the console form of the Confirm button: same gates, same audit,
@@ -657,18 +771,29 @@ plugins/chatbot/
 │   ├── Config.php              defaults + config/chatbot.php
 │   ├── Faq.php                 FAQ matching over one content file
 │   ├── faq.sample.php          the shipped sample content (15 entries)
+│   ├── Overlay.php             staff corrections (keywords, drafts, hidden)
+│   ├── Guard.php               blocked questions and forbidden answers
+│   ├── LogStore.php            NDJSON conversation log (rotate, prune, hash)
+│   ├── History.php             filters, paging, CSV, summary for staff
+│   ├── Evaluation.php          corpus accuracy, sweep, typo fuzz, parity
+│   ├── Admin.php               which staff surface is open to whom
 │   ├── TestService.php         fake CLI-Anything for offline tests
 │   ├── vendor/
 │   │   ├── CliAnything.php     copy of the service, stock-install fallback
 │   │   └── README.md           why it exists and how to re-sync it
-│   └── SelfTest.php            111 assertions
+│   └── SelfTest.php            178 assertions
 ├── pages/
 │   ├── opac.php                ?p=chatbot (guest + member)
-│   └── admin.php               System -> Chatbot (staff)
+│   ├── admin.php               System -> Chatbot (staff)
+│   ├── history.php             System -> Chatbot history (read-only log)
+│   ├── review.php              System -> Chatbot review (corrections)
+│   └── rules.php               System -> Chatbot rules (block lists)
 ├── assets/
 │   ├── chatbot.css
 │   └── chatbot.js
-└── tests/run.php               `php plugins/chatbot/tests/run.php`
+└── tests/
+    ├── run.php                 `php plugins/chatbot/tests/run.php`
+    └── corpus.php              the evaluation corpus (data, not code)
 ```
 
 ## Testing
@@ -688,8 +813,14 @@ version, bundled copy in sync, greeting without a database), the search
 pipeline (tokenizer, similarity, ranking fragments, typo fallback, did-you-mean
 rendering, sort hints, hidden records, configurable weights, the optional
 FULLTEXT branch), the FAQ (content validation, phrase and typo matching, the
-coverage guard, locale selection, the help listing) and the escaping of the
-rendered shell.
+coverage guard, locale selection, the help listing), the conversation log
+(format, guard prefix, hashing, truncation, rotation, retention, unwritable
+directory, HTTP and channel rows), the staff history (filters, paging, CSV
+quoting, escaping, permission gate), the overlay (drafts, activation, hidden
+entries, refused input, audit, revert, preview), the guard (bypass variants,
+invalid rules, answer screening, over-blocking), the evaluation targets
+(corpus accuracy, threshold plateau, typo tolerance, language parity, render
+contract) and the escaping of the rendered shell.
 
 ## Troubleshooting
 

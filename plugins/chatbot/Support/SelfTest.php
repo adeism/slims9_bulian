@@ -41,6 +41,7 @@ final class SelfTest
         self::history($cases);
         self::overlay($cases);
         self::guard($cases);
+        self::evaluation($cases);
         self::channels($cases);
         self::stock($cases);
         self::http($cases);
@@ -1857,6 +1858,94 @@ final class SelfTest
         $haystack = (string)($response['reply']['text'] ?? '') . json_encode($response['reply']['blocks'] ?? [], JSON_UNESCAPED_UNICODE);
 
         return strpos(Str::lower($haystack), Str::lower($needle)) !== false;
+    }
+
+
+    /**
+     * Numbers, not anecdotes: corpus accuracy, the threshold sweep, typo
+     * tolerance, language parity and the render contract.
+     *
+     * @param array $cases
+     * @return void
+     */
+    private static function evaluation(array &$cases)
+    {
+        $config = self::config();
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $corpus = Evaluation::corpus();
+        $negatives = array_filter($corpus, function ($case) {
+            return strpos($case['expect'], 'faq:') !== 0;
+        });
+        $positive = count($corpus) - count($negatives);
+
+        self::add(
+            $cases,
+            'eval: the corpus has enough positives and negatives to mean something',
+            count($corpus) >= 100 && $positive >= 40 && count($negatives) >= 40,
+            json_encode(['total' => count($corpus), 'positive' => $positive, 'negative' => count($negatives)])
+        );
+
+        $report = Evaluation::run($config);
+
+        self::add(
+            $cases,
+            'eval: corpus accuracy clears the 95% target',
+            $report['accuracy'] >= Evaluation::MIN_ACCURACY,
+            json_encode(['accuracy' => $report['accuracy'], 'failures' => array_slice($report['failures'], 0, 5)])
+        );
+
+        $negativeFailures = array_filter($report['failures'], function ($failure) {
+            return strpos($failure['expect'], 'faq:') !== 0;
+        });
+
+        self::add(
+            $cases,
+            'eval: no search, member or staff row is ever answered by the FAQ',
+            $negativeFailures === [],
+            json_encode(array_slice(array_values($negativeFailures), 0, 5))
+        );
+
+        $sweep = Evaluation::sweep($config, 0.56, 0.68, 0.06);
+        $default = $sweep[number_format(Evaluation::DEFAULT_THRESHOLD, 2)] ?? null;
+        $below = $sweep[number_format(0.56, 2)] ?? null;
+
+        self::add(
+            $cases,
+            'eval: the default threshold is accurate and sits on a plateau',
+            is_array($default)
+                && $default['precision'] >= Evaluation::MIN_PRECISION
+                && $default['recall'] >= Evaluation::MIN_RECALL
+                && is_array($below)
+                && abs($below['precision'] - $default['precision']) <= 0.05,
+            json_encode(['default' => $default, 'below' => $below])
+        );
+
+        $typo = Evaluation::typoRobustness($config, 3);
+
+        self::add(
+            $cases,
+            'eval: one-edit typos still reach the right entry at least 90% of the time',
+            $typo['checked'] >= 60 && $typo['ratio'] >= 0.90,
+            json_encode(['ratio' => $typo['ratio'], 'checked' => $typo['checked'], 'missed' => array_slice($typo['missed'], 0, 5)])
+        );
+
+        self::add(
+            $cases,
+            'eval: both languages carry the same keys and placeholders',
+            Evaluation::langParity() === [],
+            json_encode(array_slice(Evaluation::langParity(), 0, 5))
+        );
+
+        $contract = Evaluation::renderContract($config);
+
+        self::add(
+            $cases,
+            'eval: every rendered answer has text, valid blocks and no stray placeholder',
+            $contract === [],
+            json_encode(array_slice($contract, 0, 5))
+        );
     }
 
     /**

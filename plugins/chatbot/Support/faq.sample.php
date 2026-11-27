@@ -68,8 +68,8 @@ return [
         'question' => 'Alamat surel (email)',
         'question_en' => 'E-mail address',
         'keywords' => [
-            'email', 'surel', 'e-mail', 'surat elektronik', 'mengirim email',
-            'mail', 'write to',
+            'email', 'surel', 'e-mail', 'e-mail address', 'email address', 'alamat surel',
+            'surat elektronik', 'mengirim email', 'mail', 'write to',
         ],
         'answer' => 'pustaka@contoh.go.id — sertakan nomor anggota pada subjek bila menanyakan pinjaman atau denda.',
         'answer_en' => 'pustaka@contoh.go.id — include your member number in the subject for loan or fine questions.',
@@ -81,6 +81,7 @@ return [
         'keywords' => [
             'daftar anggota', 'cara daftar', 'jadi anggota', 'kartu anggota', 'keanggotaan',
             'syarat', 'registrasi', 'membership', 'register', 'sign up', 'member card', 'join',
+            'menjadi anggota', 'cara mendaftar', 'anggota baru', 'become a member', 'how to join', 'new member',
         ],
         'answer' => 'Datang ke meja layanan dengan KTP/KK dan mengisi formulir. Kartu anggota dicetak hari itu juga. Untuk pendaftaran kolektif (sekolah/instansi), kirim surat permohonan ke alamat surel kami.',
         'answer_en' => 'Come to the service desk with your ID card and fill in the form. The card is printed the same day. For group registration (school or institution), send a request letter to our e-mail.',
@@ -94,7 +95,8 @@ return [
         'question_en' => 'Membership fee and validity',
         'keywords' => [
             'biaya', 'bayar', 'harga', 'tarif', 'gratis', 'masa berlaku', 'berapa lama anggota',
-            'fee', 'cost', 'price', 'free', 'validity', 'expire',
+            'biaya keanggotaan', 'biaya pendaftaran', 'iuran', 'fee', 'cost', 'price', 'free',
+            'validity', 'expire', 'membership fee', 'registration fee',
         ],
         'answer' => 'Pendaftaran gratis. Kartu berlaku 2 tahun dan dapat diperpanjang tanpa biaya selama tidak ada tunggakan denda.',
         'answer_en' => 'Registration is free. The card is valid for 2 years and can be renewed at no cost as long as there are no outstanding fines.',
@@ -126,7 +128,8 @@ return [
         'question' => 'Denda keterlambatan',
         'question_en' => 'Late return fines',
         'keywords' => [
-            'denda', 'terlambat', 'telat', 'keterlambatan', 'fine', 'fines', 'late', 'overdue', 'penalty',
+            'denda', 'dendanya', 'terlambat', 'telat', 'keterlambatan', 'denda keterlambatan',
+            'fine', 'fines', 'late', 'overdue', 'penalty',
         ],
         'answer' => 'Denda Rp1.000 per hari per eksemplar, dihitung sejak hari pertama keterlambatan. Denda dibayar di meja sirkulasi sebelum meminjam lagi.',
         'answer_en' => 'Rp1,000 per day per item, counted from the first day of delay. Fines are paid at the circulation desk before borrowing again.',
@@ -191,8 +194,9 @@ return [
         'question' => 'Kartu anggota hilang',
         'question_en' => 'Lost membership card',
         'keywords' => [
-            'kartu hilang', 'kehilangan kartu', 'kartu rusak', 'ganti kartu',
-            'lost card', 'replace card', 'card damaged',
+            'kartu hilang', 'kartu anggota hilang', 'kehilangan kartu', 'kartu rusak',
+            'kartu anggota rusak', 'ganti kartu', 'lost card', 'lost membership card',
+            'replace card', 'card damaged',
         ],
         'answer' => 'Lapor ke meja layanan dengan membawa KTP. Kartu lama diblokir dan kartu pengganti dicetak dengan biaya Rp5.000.',
         'answer_en' => 'Report it at the service desk with your ID card. The old card is blocked and a replacement is printed for Rp5,000.',

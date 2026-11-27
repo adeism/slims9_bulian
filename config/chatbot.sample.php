@@ -103,7 +103,56 @@ return [
         'threshold' => 0.62,
         // How many other questions to offer after an answer.
         'topics' => 3,
+        // Staff corrections from the review page (files/chatbot/faq.local.php)
+        'overlay' => true,
+        'overlay_file' => '',
     ],
+
+    /*
+     |--------------------------------------------------------------------------
+     | Conversation log
+     |--------------------------------------------------------------------------
+     |
+     | One append-only NDJSON file per month under files/chatbot. There is no
+     | table: the log is rotated by size, pruned by age, starts with a PHP
+     | exit guard, and never holds a member id (only a salted hash). The staff
+     | page "System -> Chatbot history" reads it.
+     */
+    'log' => [
+        'enabled' => true,
+        // Directory; empty = SB files/chatbot.
+        'dir' => '',
+        'retention_days' => 90,
+        'max_bytes' => 5242880,
+        'max_files' => 6,
+        // false = only a hash of the question, never its text.
+        'store_message' => true,
+        'truncate' => 300,
+        'feedback' => true,
+    ],
+
+    /*
+     |--------------------------------------------------------------------------
+     | Guard: blocked questions, forbidden answers
+     |--------------------------------------------------------------------------
+     |
+     | Off by default, and empty until someone adds a rule in
+     | "System -> Chatbot rules". The rules live in files/chatbot/guard.php.
+     */
+    'guard' => [
+        'enabled' => false,
+        'file' => '',
+        'log_hits' => true,
+    ],
+
+    /*
+     |--------------------------------------------------------------------------
+     | Staff surfaces
+     |--------------------------------------------------------------------------
+     */
+    'admin_history' => true,
+    'admin_overlay' => true,
+    'admin_rules' => true,
 
     /*
      |--------------------------------------------------------------------------

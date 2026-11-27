@@ -27,7 +27,7 @@ final class Faq
     const THRESHOLD = 0.62;
 
     /** How similar a single word must be to count as the same word. */
-    const WORD_THRESHOLD = 0.78;
+    const WORD_THRESHOLD = 0.74;
 
     /** Shortest accepted word. */
     const MIN_WORD = 2;
@@ -423,7 +423,56 @@ final class Faq
             return 1.0;
         }
 
-        return max(0.0, 1.0 - (levenshtein($a, $b) / $length));
+        return max(0.0, 1.0 - (self::distance($a, $b) / $length));
+    }
+
+    /**
+     * Edit distance that also counts a swapped pair as one edit
+     * ("tleepon" -> "telepon" is one mistake, not two). Optimal string
+     * alignment, no external extension.
+     *
+     * @param string $a
+     * @param string $b
+     * @return int
+     */
+    public static function distance(string $a, string $b): int
+    {
+        $left = strlen($a);
+        $right = strlen($b);
+
+        if ($left === 0) {
+            return $right;
+        }
+
+        if ($right === 0) {
+            return $left;
+        }
+
+        $before = [];
+        $current = range(0, $right);
+
+        for ($i = 1; $i <= $left; $i++) {
+            $previous = $before;
+            $before = $current;
+            $current = [$before[0] + 1];
+
+            for ($j = 1; $j <= $right; $j++) {
+                $cost = $a[$i - 1] === $b[$j - 1] ? 0 : 1;
+                $value = min(
+                    $before[$j] + 1,          // deletion
+                    $current[$j - 1] + 1,     // insertion
+                    $before[$j - 1] + $cost   // substitution
+                );
+
+                if ($i > 1 && $j > 1 && $a[$i - 1] === $b[$j - 2] && $a[$i - 2] === $b[$j - 1]) {
+                    $value = min($value, $previous[$j - 2] + 1);
+                }
+
+                $current[$j] = $value;
+            }
+        }
+
+        return $current[$right];
     }
 
     // -----------------------------------------------------------------
@@ -454,7 +503,9 @@ final class Faq
 
             // Whole phrase typed: this is the strongest signal.
             if (strpos($haystack, ' ' . $phrase . ' ') !== false) {
-                $best = max($best, 1.0);
+                // A longer phrase beats a shorter one: "e-mail address"
+                // belongs to the e-mail entry, not to "address".
+                $best = max($best, 1.0 + min(0.05, count(explode(' ', $phrase)) * 0.01));
                 $phraseHit = true;
 
                 foreach ($tokens as $position => $token) {
@@ -466,16 +517,42 @@ final class Faq
                 continue;
             }
 
-            foreach (self::tokens($phrase) as $keywordToken) {
+            $keywordTokens = self::tokens($phrase);
+            $keywordHits = 0;
+            $localBest = 0.0;
+            $positions = [];
+
+            foreach ($keywordTokens as $keywordToken) {
+                $tokenHit = false;
+
                 foreach ($tokens as $position => $token) {
                     $similarity = self::similarity($token, $keywordToken);
 
                     if ($similarity >= self::WORD_THRESHOLD) {
                         // A near-miss word ("telepn") stays just under a
                         // phrase hit, so the exact phrasing still wins.
-                        $best = max($best, 0.9 * $similarity);
-                        $matched[$position] = true;
+                        $localBest = max($localBest, 0.9 * $similarity);
+                        $positions[$position] = true;
+                        $tokenHit = true;
                     }
+                }
+
+                if ($tokenHit) {
+                    $keywordHits++;
+                }
+            }
+
+            // Half of a two-word keyword ("buku" out of "berapa buku") is
+            // not evidence: it made "psan buku" look like a loan-limit
+            // question. A multi-word keyword must mostly appear.
+            $needed = (int)ceil(count($keywordTokens) * 0.6);
+            $strong = count($keywordTokens) <= 1 || $keywordHits >= $needed;
+
+            if ($strong) {
+                $best = max($best, $localBest);
+
+                foreach ($positions as $position => $unused) {
+                    $matched[$position] = true;
                 }
             }
         }

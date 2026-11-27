@@ -201,10 +201,15 @@ cp config/chatbot.sample.php config/chatbot.php
 cp plugins/chatbot/Support/faq.sample.php config/chatbot.faq.php   # optional
 php index.php plugin:list --type=all && php index.php plugin:activate <id>
 
-php index.php chatbot:selftest                      # 111 offline checks
+php index.php chatbot:selftest                      # 178 offline checks
 php index.php chatbot:ask "pinjaman terlambat"      # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
+
+php index.php chatbot:log --days=7 --unanswered  # what was never answered
+php index.php chatbot:eval                       # accuracy, typo tolerance, parity
+php index.php chatbot:eval --sweep               # FAQ threshold table
+CHATBOT_E2E=1 php index.php chatbot:e2e          # read-only live-DB dialogues
 ```
 
 Surfaces: `index.php?p=chatbot` (OPAC menu) and **System → Chatbot** (staff).
@@ -232,6 +237,19 @@ phone number, address, membership, fines — are answered from one content file
 with 15 common entries). The library fills that one page with its real policy;
 `php index.php chatbot:faq` validates it. The FAQ is only consulted when a
 message is *not* a command, so "pinjaman saya" stays a loan question.
+
+Everything the chat does is measurable and correctable without a deploy. It
+keeps an append-only conversation log (`files/chatbot/`, no table: salted
+actor hash, no name or IP, truncated question, 90-day retention) and the staff
+area gains three pages beside the chat: **history** (filters, one conversation,
+CSV, the week's numbers), **review** (unanswered and thumbs-down queue; add a
+keyword, create a draft entry, hide one, block a question, preview before
+saving, restore the previous version) and **rules** (blocked questions and
+forbidden answers, with an over-blocking count). Corrections land in an overlay
+file, never in `config/chatbot.faq.php`. `chatbot:eval` runs a ~110-sentence
+corpus in both languages and gates on accuracy, typo tolerance, threshold
+stability, language parity and the render contract; `chatbot:e2e` replays
+read-only dialogues against the live database.
 
 Nothing in the core is patched: the chatbot uses the stock plugin API
 (`registerMenu`, and the `custom_api_route` hook that `api/v1/routes.php`
@@ -312,14 +330,16 @@ php plugins/chatbot/tests/run.php     # standalone runner
 php index.php chatbot:selftest        # inside SLiMS, same suite
 ```
 
-111 assertions cover the Indonesian/English intent table, role policy (guest,
+178 assertions cover the Indonesian/English intent table, role policy (guest,
 member, staff), confirmation replay/expiry/session binding, rate limits, the
 engine against a fake service, the HTTP pipeline (CSRF, empty message, disabled
 plugin), the WhatsApp/Telegram channel (payload shapes, allow-list identity,
 guest/member/staff answers, YA/BATAL confirmation, replay, throttle), the search
 pipeline (typo fallback, did-you-mean, popularity ranking, hidden records), the
 FAQ (content validation, phrase/typo matching, the coverage guard, locale
-selection) and the escaping of the rendered shell.
+selection), the conversation log and staff history, the correction overlay and
+its audit trail, the guard (bypass variants, answer screening, over-blocking),
+the evaluation targets, and the escaping of the rendered shell.
 
 Before enabling writes on a real instance, run `php -l` over the new PHP files,
 then `php tarsius clianything:doctor` and the write commands **without**

@@ -80,13 +80,19 @@ final class Intent
             return self::result(self::THANKS, [], 0.95, 'thanks');
         }
 
-        if (preg_match('/^(bantuan|help|menu|perintah|commands?|apa (saja )?yang bisa|could you help)\b/u', $text)
+        // "bantuan" alone is the help command; "bantuan referensi" is a
+        // question about the reference service and belongs to the FAQ.
+        if (preg_match('/^(bantuan|help|menu|perintah|commands?|apa (saja )?yang bisa( (kamu|anda))?( (lakukan|bantu))?|could you help)\s*[?!.]*$/u', $text)
             || preg_match('/\b(apa yang bisa (kamu|anda) (lakukan|bantu)|what can you do)\b/u', $text)) {
             return self::result(self::HELP, [], 0.9, 'help');
         }
 
-        if (preg_match('/^(siapa (saya|aku)|who am i|akun saya|my account|profil saya|my profile)\b/u', $text)) {
+        if (preg_match('/^(siapa (saya|aku)|who am i)\b/u', $text)) {
             return self::result(self::WHOAMI, [], 0.9, 'whoami');
+        }
+
+        if (preg_match('/\b(profil|profile|akun|account)\b/u', $text) && $self) {
+            return self::result(self::MY_PROFILE, ['member' => $memberId], 0.9, 'my-profile');
         }
 
         // ---- self service (member) --------------------------------------
@@ -106,7 +112,9 @@ final class Intent
             ], 0.92, 'my-loans');
         }
 
-        if (preg_match('/\b(denda|fines?|penalt(y|ies))\b/u', $text) && ($self || $role !== 'staff')) {
+        // Only "denda saya" is a member query; "berapa denda keterlambatan"
+        // is a policy question the FAQ answers.
+        if (preg_match('/\b(denda|fines?|penalt(y|ies))\b/u', $text) && $self) {
             return self::result(self::MY_PROFILE, ['member' => $memberId], 0.88, 'my-fines');
         }
 
@@ -168,7 +176,7 @@ final class Intent
         }
 
         // ---- member (staff) ---------------------------------------------
-        if (!is_null($memberId) && preg_match('/\b(anggota|member|pemustaka|patron|member card)\b/u', $text)) {
+        if ($role === 'staff' && !is_null($memberId) && preg_match('/\b(anggota|member|pemustaka|patron|member card)\b/u', $text)) {
             return self::result(self::MEMBER_GET, ['member' => $memberId], 0.88, 'member');
         }
 
