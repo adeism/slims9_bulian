@@ -3,10 +3,11 @@
  * CLI-Anything for SLiMS 9 Bulian — shared service layer
  *
  * This class is the single place where the agent-facing surface of SLiMS
- * lives. Both entry points use it:
+ * lives. All entry points use it:
  *
  *   1. `tarsius` console commands  -> plugins/Commands/CliAnything*.php
  *   2. HTTP bridge plugin          -> plugins/cli_anything/cli_anything.plugin.php
+ *   3. chatbot plugin              -> plugins/chatbot/ (OPAC and staff pages)
  *
  * Design rules (see README "CLI-Anything" section):
  *   - Reads are free (no token needed when called locally).
@@ -49,6 +50,9 @@ class CliAnything
 
     /** @var bool */
     private $circulationLoaded = false;
+
+    /** @var array|null actor supplied by an entry point (chat, console) */
+    private $actorOverride = null;
 
     private function __construct()
     {
@@ -160,16 +164,59 @@ class CliAnything
     }
 
     /**
-     * Staff identity used for audit trails.
+     * Identity used for audit trails.
      *
-     * @return array
+     * Defaults to the configured service account (`CLI-Anything`), which is
+     * what the HTTP bridge and the console use. The chatbot calls
+     * `actingAs()` so a write is attributed to the real staff member, or to
+     * the member who asked for a self-service renewal.
+     *
+     * @return array{type:string,id:string,name:string}
      */
     public function actor(): array
     {
+        if (!is_null($this->actorOverride)) {
+            return $this->actorOverride;
+        }
+
         return [
-            'id' => (int)$this->option('user_id', 1),
+            'type' => 'staff',
+            'id' => (string)(int)$this->option('user_id', 1),
             'name' => (string)$this->option('user_name', 'CLI-Anything'),
         ];
+    }
+
+    /**
+     * Attribute the next operations to a real person.
+     *
+     * @param string $type staff|member
+     * @param string $id   staff user id or member id
+     * @param string $name display name for the log message
+     * @return CliAnything
+     */
+    public function actingAs(string $type, string $id, string $name = ''): CliAnything
+    {
+        $type = in_array($type, ['staff', 'member'], true) ? $type : 'staff';
+
+        $this->actorOverride = [
+            'type' => $type,
+            'id' => (string)$id,
+            'name' => (string)$name,
+        ];
+
+        return $this;
+    }
+
+    /**
+     * Forget the override and go back to the configured service account.
+     *
+     * @return CliAnything
+     */
+    public function resetActor(): CliAnything
+    {
+        $this->actorOverride = null;
+
+        return $this;
     }
 
     // -----------------------------------------------------------------
@@ -721,6 +768,10 @@ class CliAnything
     /**
      * Return an item. Identify the loan by loan id or item code.
      *
+     * Without $commit this is a pure planning call: it asks SLiMS'
+     * `countOverdueValue()` how many days late the item is and which fine
+     * *would* be created, but writes nothing.
+     *
      * @param int|null    $loanId
      * @param string|null $itemCode
      * @param bool        $commit
@@ -730,6 +781,81 @@ class CliAnything
     {
         if ($commit) {
             $this->assertWriteAllowed('loan.checkin');
+        }
+
+        $this->loadCirculation();
+
+        $loan = $this->findActiveLoan($loanId, $itemCode);
+
+        return $this->withSession(function () use ($loan, $commit) {
+            $circ = new \circulation($this->dbs, $this->dbs->escape_string($loan['member_id']));
+            $returnDate = date('Y-m-d');
+            $overdue = $circ->countOverdueValue((int)$loan['loan_id'], $returnDate);
+
+            $plan = [
+                'loan_id' => (int)$loan['loan_id'],
+                'item_code' => $loan['item_code'],
+                'title' => $loan['title'],
+                'member_id' => $loan['member_id'],
+                'member_name' => $loan['member_name'],
+                'loan_date' => $loan['loan_date'],
+                'due_date' => $loan['due_date'],
+                'return_date' => $returnDate,
+                'overdue_days' => $overdue ? (int)$overdue['days'] : 0,
+                'fine_amount' => $overdue ? (int)$overdue['value'] : 0,
+            ];
+
+            $base = [
+                'operation' => 'loan.checkin',
+                'dry_run' => !$commit,
+                'committed' => false,
+                'plan' => $plan,
+                'reserved_for_other_member' => false,
+                'receipt' => [],
+            ];
+
+            if (!$commit) {
+                return $base;
+            }
+
+            $result = $circ->returnItem((int)$loan['loan_id']);
+            $receipt = isset($_SESSION['receipt_record']['return']) ? $_SESSION['receipt_record']['return'] : [];
+
+            $this->audit('Checkin', sprintf(
+                'CLI-Anything return loan #%d (%s) for member %s, overdue %d day(s), fine %d, return date %s',
+                (int)$loan['loan_id'],
+                $loan['item_code'],
+                $loan['member_id'],
+                $plan['overdue_days'],
+                $plan['fine_amount'],
+                $returnDate
+            ));
+
+            return array_merge($base, [
+                'dry_run' => false,
+                'committed' => true,
+                'reserved_for_other_member' => $result === ITEM_RESERVED,
+                'receipt' => $receipt,
+            ]);
+        }, $loan['member_id']);
+    }
+
+    /**
+     * Renew a loan.
+     *
+     * The dry-run explains whether SLiMS will allow the renewal (reborrow
+     * limit, reservation by another member) and what the new due date
+     * would be, without writing anything.
+     *
+     * @param int|null    $loanId
+     * @param bool        $commit
+     * @param string|null $itemCode optional alternative to the loan id
+     * @return array
+     */
+    public function loanExtend(?int $loanId, bool $commit = false, ?string $itemCode = null): array
+    {
+        if ($commit) {
+            $this->assertWriteAllowed('loan.extend');
         }
 
         $this->loadCirculation();
@@ -819,7 +945,7 @@ class CliAnything
                 'committed' => true,
                 'plan' => $plan,
             ];
-        });
+        }, $loan['member_id']);
     }
 
     // -----------------------------------------------------------------
@@ -953,7 +1079,12 @@ class CliAnything
         $snapshot = isset($_SESSION) && is_array($_SESSION) ? $_SESSION : [];
         $actor = $this->actor();
 
-        $_SESSION['uid'] = $actor['id'];
+        // SLiMS' circulation classes attribute their own log lines to
+        // $_SESSION['uid'], which must stay a staff account even when the
+        // request came from a member (chat self-service renewal).
+        $_SESSION['uid'] = ($actor['type'] ?? 'staff') === 'member'
+            ? (int)$this->option('user_id', 1)
+            : $actor['id'];
         $_SESSION['realname'] = $actor['name'];
         if ($memberId !== null && $memberId !== '') {
             $_SESSION['memberID'] = $memberId;
@@ -1094,7 +1225,16 @@ class CliAnything
     private function audit(string $action, string $message): bool
     {
         try {
-            Log::write('staff', (string)$this->actor()['id'], 'CLI-Anything', $message, 'CLI-Anything', $action);
+            $actor = $this->actor();
+
+            Log::write(
+                (string)($actor['type'] ?? 'staff'),
+                (string)$actor['id'],
+                'CLI-Anything',
+                $message,
+                'CLI-Anything',
+                $action
+            );
 
             return true;
         } catch (\Throwable $e) {

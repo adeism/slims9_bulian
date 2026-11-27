@@ -11,6 +11,7 @@ files/*
 repository/*
 config/*
 !config/cli_anything.sample.php
+!config/chatbot.sample.php
 cache/*
 .DS_Store
 ._.*
@@ -29,6 +30,7 @@ plugins/*
 !plugins/read_counter/
 !plugins/Commands/
 !plugins/cli_anything/
+!plugins/chatbot/
 
 template/*
 

@@ -52,8 +52,13 @@ agent ──► cli-anything-slims (Python CLI)
              ├─► HTTP bridge plugin      plugins/cli_anything/     (remote, token)
              └─► tarsius commands        plugins/Commands/          (local, PHP)
                          │
+librarian ─► chatbot plugin             plugins/chatbot/           (OPAC + admin, session)
+                         │
                    SLiMS core ──► circulation / member ──► MySQL
 ```
+
+All three entry points call one service, so a rule learned in the console is a
+rule enforced in the chat.
 
 ### What is included
 
@@ -63,7 +68,9 @@ agent ──► cli-anything-slims (Python CLI)
 | Fase 1 | Console commands | `plugins/Commands/CliAnything*.php` | `clianything:*` commands inside SLiMS' own Symfony-based `tarsius` console |
 | Fase 1 | Shared service | `plugins/Commands/Support/` | queries, error codes, session isolation, action rendering |
 | Fase 2 | Write gates | `plugins/Commands/Support/CliAnything.php` | dry run by default, `--commit`, `allow_write` / `allow_bulk`, pre-bulk DB dump, `system_log` audit |
-| — | Agent harness | `cli-anything/` | installable Python CLI `cli-anything-slims` + `SKILL.md` + 25 tests |
+| Fase 3 | Chatbot | `plugins/chatbot/` | percakapan untuk tamu / anggota / staf di OPAC dan admin, di atas service yang sama; tulis selalu dua langkah (rencana → konfirmasi) |
+| — | Chatbot config | `config/chatbot.sample.php` | permukaan yang aktif, gerbang tulis chat, batas laju, bahasa |
+| — | Agent harness | `cli-anything/` | installable Python CLI `cli-anything-slims` + `SKILL.md` + 27 tests |
 | — | Configuration | `config/cli_anything.sample.php` | token, gates, PII policy, backup dir |
 | — | Docs drafts | `docs/slims-documentation/` | halaman siap-kirim untuk `slims/SLiMS-9-Documentation` (dev guide + panduan pustakawan) |
 
@@ -168,6 +175,40 @@ human activity in **System → System Log**.
 * Run the harness on the operator's machine or in CI, not on the library server,
   when you want to avoid installing Python in production.
 
+### Chatbot: the same engine, with a face
+
+`plugins/chatbot/` turns the command surface into a conversation, without
+duplicating a single query. It is the only way a librarian reaches the engine
+without a terminal, and the only place where the role is decided by a session
+rather than by a token.
+
+| | Guest (OPAC) | Member (logged in) | Staff (admin) |
+|---|---|---|---|
+| Catalogue search, title detail, copy status | ✅ | ✅ | ✅ |
+| Own loans and fines | ❌ → login link | ✅ own account only | — |
+| Any member's circulation | ❌ | ❌ (id forced server-side) | ✅ |
+| Daily figures, diagnostics | ❌ | ❌ | ✅ |
+| Checkout / check-in / renewal | ❌ | own renewal, gated | ✅, after confirmation |
+| Delete | ❌ | ❌ | ❌ (no such command) |
+
+A transaction is always two steps: the first answer is a dry run plus a
+single-use, HMAC-signed token (180 s); only `{confirm: token}` writes. That
+token is bound to the session role and actor, so a replayed request, a double
+click, or "yes" for a different plan cannot commit anything.
+
+```bash
+cp config/chatbot.sample.php config/chatbot.php
+php index.php plugin:list --type=all && php index.php plugin:activate <id>
+
+php index.php chatbot:selftest                      # 56 offline checks
+php index.php chatbot:ask "pinjaman terlambat"      # staff view
+php index.php chatbot:ask "pinjaman saya" --role=member --as=123
+php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
+```
+
+Surfaces: `index.php?p=chatbot` (OPAC menu) and **System → Chatbot** (staff).
+Full details, role matrix and the JSON contract: `plugins/chatbot/README.md`.
+
 ### Recipes
 
 ```bash
@@ -229,9 +270,21 @@ It boots the compose stack, activates the bridge with a random token, seeds a
 throw-away patron, then runs doctor → item lookup → dry-run checkout → commit →
 check-in through both backends, asserting the envelopes along the way.
 
-25 tests cover the envelope contract, dry-run/commit forwarding, gate exit
+27 tests cover the envelope contract, dry-run/commit forwarding, gate exit
 codes, HTTP request shaping (token header, path escaping, POST bodies, error
 mapping) and `tarsius` argv/JSON parsing. They need no database.
+
+The chatbot plugin has its own offline suite (no database, no SLiMS boot):
+
+```bash
+php plugins/chatbot/tests/run.php     # standalone runner
+php index.php chatbot:selftest        # inside SLiMS, same suite
+```
+
+56 assertions cover the Indonesian/English intent table, role policy (guest,
+member, staff), confirmation replay/expiry/session binding, rate limits, the
+engine against a fake service, the HTTP pipeline (CSRF, empty message, disabled
+plugin) and the escaping of the rendered shell.
 
 Before enabling writes on a real instance, run `php -l` over the new PHP files,
 then `php tarsius clianything:doctor` and the write commands **without**
