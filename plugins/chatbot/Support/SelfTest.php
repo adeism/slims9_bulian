@@ -40,6 +40,7 @@ final class SelfTest
         self::logs($cases);
         self::history($cases);
         self::overlay($cases);
+        self::guard($cases);
         self::channels($cases);
         self::stock($cases);
         self::http($cases);
@@ -1597,6 +1598,267 @@ final class SelfTest
         );
     }
 
+
+    /**
+     * The guard: blocked questions, forbidden answers, bypass attempts and
+     * the over-blocking check.
+     *
+     * @param array $cases
+     * @return void
+     */
+    private static function guard(array &$cases)
+    {
+        $dir = self::tempDir('guard');
+        $file = $dir . '/guard.php';
+        $config = self::config();
+        $config['guard'] = ['enabled' => true, 'file' => $file, 'log_hits' => true];
+        $config['log'] = array_merge($config['log'], ['dir' => self::tempDir('guard-log')]);
+
+        self::add(
+            $cases,
+            'guard: off by default, so no rule can fire',
+            Guard::enabled(self::config()) === false
+                && is_null(Guard::question('bebas denda', self::config()))
+        );
+
+        $invalid = [
+            'scope' => ['scope' => 'everything', 'type' => 'phrase', 'pattern' => 'x', 'category' => 'policy', 'action' => 'refuse', 'note' => 'n'],
+            'type' => ['scope' => 'question', 'type' => 'vibes', 'pattern' => 'x', 'category' => 'policy', 'action' => 'refuse', 'note' => 'n'],
+            'action' => ['scope' => 'question', 'type' => 'phrase', 'pattern' => 'x', 'category' => 'policy', 'action' => 'explode', 'note' => 'n'],
+            'hide' => ['scope' => 'question', 'type' => 'phrase', 'pattern' => 'x', 'category' => 'policy', 'action' => 'hide', 'note' => 'n'],
+            'note' => ['scope' => 'question', 'type' => 'phrase', 'pattern' => 'x', 'category' => 'policy', 'action' => 'refuse', 'note' => ' '],
+            'regex' => ['scope' => 'question', 'type' => 'regex', 'pattern' => '(*', 'category' => 'policy', 'action' => 'refuse', 'note' => 'n'],
+            'long' => ['scope' => 'question', 'type' => 'phrase', 'pattern' => str_repeat('a', 200), 'category' => 'policy', 'action' => 'refuse', 'note' => 'n'],
+        ];
+
+        $bad = [];
+
+        foreach ($invalid as $name => $rule) {
+            if (Guard::validate($rule) === '') {
+                $bad[] = $name;
+            }
+        }
+
+        self::add(
+            $cases,
+            'guard: invalid scope, type, action, note, regex and length are refused',
+            $bad === [],
+            json_encode($bad)
+        );
+
+        $rules = [
+            ['id' => 'g-bebas', 'scope' => 'question', 'type' => 'phrase', 'pattern' => 'bebas denda', 'category' => 'policy', 'action' => 'refuse', 'note' => 'Kebijakan kepala perpustakaan'],
+            ['id' => 'g-halo', 'scope' => 'question', 'type' => 'phrase', 'pattern' => 'obrolan santai', 'category' => 'off-topic', 'action' => 'fallback', 'note' => 'Bukan layanan perpustakaan'],
+            ['id' => 'g-spam', 'scope' => 'question', 'type' => 'word', 'pattern' => 'spam', 'category' => 'spam', 'action' => 'refuse', 'note' => 'Spam'],
+            ['id' => 'g-kotor', 'scope' => 'question', 'type' => 'regex', 'pattern' => 'kata\s+kotor', 'category' => 'abuse', 'action' => 'refuse', 'note' => 'Uji regex'],
+            ['id' => 'g-answer', 'scope' => 'answer', 'type' => 'phrase', 'pattern' => 'bebas denda juga', 'category' => 'policy', 'action' => 'hide', 'note' => 'Jangan pernah berjanji'],
+        ];
+
+        $saved = Guard::save($rules, 'rina', $config);
+        Guard::flush();
+
+        self::add(
+            $cases,
+            'guard: a rule set is written atomically and read back',
+            $saved['ok'] === true
+                && is_file($file)
+                && strpos((string)file_get_contents($file), '<?php') === 0
+                && count(Guard::rules($config)) === 5
+                && glob($dir . '/*.tmp-*') === [],
+            json_encode($saved)
+        );
+
+        $variants = ['bebas denda', 'BEBAS  DENDA!!', "bebas\u{200B} denda", 'b3bas d3nda', '  Bebas, denda.  '];
+        $missed = [];
+
+        foreach ($variants as $variant) {
+            if (is_null(Guard::question($variant, $config))) {
+                $missed[] = $variant;
+            }
+        }
+
+        self::add(
+            $cases,
+            'guard: case, spacing, punctuation, zero-width and leet do not bypass a phrase',
+            $missed === [],
+            json_encode($missed)
+        );
+
+        self::add(
+            $cases,
+            'guard: a normal sentence that mentions the word is not blocked',
+            is_null(Guard::question('buku tentang denda perpustakaan', $config))
+                && is_null(Guard::question('spammer bukan spam', $config)) === false
+                && !is_null(Guard::question('spam', $config))
+        );
+
+        self::add(
+            $cases,
+            'guard: a regex rule matches its pattern and only that',
+            !is_null(Guard::question('kata     kotor sekali', $config))
+                && is_null(Guard::question('kata manis', $config))
+        );
+
+        $tmpFaq = $dir . '/faq.php';
+        file_put_contents($tmpFaq, "<?php\nreturn [\n"
+            . "  ['id' => 'clean', 'question' => 'Jam buka', 'keywords' => ['jam buka'], 'answer' => 'Buka 08.00-16.00.'],\n"
+            . "  ['id' => 'bad', 'question' => 'Denda khusus', 'keywords' => ['denda khusus'], 'answer' => 'Kami bebas denda juga untuk semua anggota.'],\n"
+            . "];\n");
+
+        $faqConfig = $config;
+        $faqConfig['faq'] = array_merge($config['faq'], ['file' => $tmpFaq, 'overlay' => false]);
+
+        $ids = array_column(Faq::items($faqConfig), 'id');
+        $hidden = Faq::hiddenByGuard($faqConfig);
+
+        self::add(
+            $cases,
+            'guard: an answer rule hides the entry and reports it',
+            !in_array('bad', $ids, true)
+                && in_array('clean', $ids, true)
+                && $hidden === ['bad']
+                && is_null(Faq::match('denda khusus', $faqConfig, 'id')),
+            json_encode(['ids' => $ids, 'hidden' => $hidden])
+        );
+
+        $faqOff = array_merge($faqConfig, ['guard' => array_merge($config['guard'], ['enabled' => false])]);
+
+        self::add(
+            $cases,
+            'guard: with the guard off, the same entry is served again',
+            in_array('bad', array_column(Faq::items($faqOff), 'id'), true)
+                && !is_null(Faq::match('denda khusus', $faqOff, 'id'))
+        );
+
+        // ---- what the visitor sees ------------------------------------
+        $_SESSION = [];
+        RateLimit::reset();
+        $service = new TestService();
+        $engine = new Engine(Actor::anonymous('guest'), $config, $service);
+        $refused = $engine->handle('apakah ada bebas denda?');
+
+        self::add(
+            $cases,
+            'guard: a blocked question is refused before the service is called',
+            strpos((string)$refused['reply']['text'], 'cannot help') !== false
+                && ($refused['meta']['guard'] ?? '') === 'g-bebas'
+                && $service->calls === [],
+            json_encode(['meta' => $refused['meta'], 'calls' => $service->calls])
+        );
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $engine = new Engine(Actor::anonymous('guest'), $config, new TestService());
+        $fallback = $engine->handle('mau obrolan santai dong');
+
+        self::add(
+            $cases,
+            'guard: an out-of-scope rule points at the service desk instead',
+            ($fallback['meta']['guard'] ?? '') === 'g-halo'
+                && strpos((string)$fallback['reply']['text'], 'outside') !== false
+                && ($fallback['meta']['tone'] ?? '') === 'warn',
+            json_encode($fallback['meta'])
+        );
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $probe = new GuardServiceProbe();
+        $engine = new Engine(Actor::anonymous('guest'), $config, $probe);
+        $screened = $engine->handle('cari buku panduan');
+        $blockText = Lang::t('en', 'guard_answer_hidden');
+
+        self::add(
+            $cases,
+            'guard: a forbidden sentence is caught inside a service result',
+            ($screened['meta']['guard'] ?? '') === 'g-answer'
+                && ($screened['reply']['text'] ?? '') === $blockText
+                && !self::mentions($screened, 'bebas denda juga'),
+            json_encode(['text' => $screened['reply']['text'], 'meta' => $screened['meta']])
+        );
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $engine = new Engine(Actor::anonymous('guest'), $faqOff, new GuardServiceProbe());
+        $notScreened = $engine->handle('cari buku panduan');
+
+        self::add(
+            $cases,
+            'guard: with the guard off the same result is untouched',
+            self::mentions($notScreened, 'bebas denda juga'),
+            json_encode($notScreened['reply']['text'])
+        );
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $token = Http::token();
+        $logged = Http::process(
+            ['message' => 'bebas denda', 'csrf_token' => $token],
+            Actor::anonymous('guest'),
+            'opac',
+            new TestService(),
+            $config
+        );
+        $rows = (new LogStore($config))->records(['limit' => 1]);
+
+        self::add(
+            $cases,
+            'guard: a hit is recorded in the conversation log',
+            ($rows[0]['guard'] ?? '') === 'g-bebas'
+                && ($logged['meta']['request'] ?? '') === ($rows[0]['req'] ?? ''),
+            json_encode($rows[0] ?? [])
+        );
+
+        // ---- not too broad ---------------------------------------------
+        $topics = Faq::topics(self::config(), 'en', 20);
+        $narrow = Guard::impact(['scope' => 'question', 'type' => 'phrase', 'pattern' => 'opening hours', 'enabled' => true], $topics);
+        $wide = Guard::impact(['scope' => 'question', 'type' => 'phrase', 'pattern' => 'jam buka', 'enabled' => true], $topics);
+
+        self::add(
+            $cases,
+            'guard: impact counts how many normal questions a rule would block',
+            $narrow >= 1 && $wide === 0 && Guard::impact(['scope' => 'question', 'type' => 'phrase', 'pattern' => 'zzzz', 'enabled' => true], $topics) === 0,
+            json_encode(['english' => $narrow, 'indonesian' => $wide])
+        );
+
+        $hits = Guard::hits('spam bebas denda', $config);
+        self::add(
+            $cases,
+            'guard: the test box reports every rule that fires',
+            count($hits) === 2 && array_column($hits, 'id') === ['g-bebas', 'g-spam'],
+            json_encode(array_column($hits, 'id'))
+        );
+
+        $disabledRule = ['id' => 'g-off', 'scope' => 'question', 'type' => 'phrase', 'pattern' => 'mati', 'category' => 'policy', 'action' => 'refuse', 'note' => 'n', 'enabled' => false];
+        self::add(
+            $cases,
+            'guard: a disabled rule stays listed but never fires',
+            Guard::matches('mati', Guard::normaliseRule($disabledRule)) === false
+                && Guard::matches('mati', Guard::normaliseRule(array_merge($disabledRule, ['enabled' => true]))) === true
+        );
+
+        self::add(
+            $cases,
+            'guard: only staff with the rules flag may change rules',
+            Admin::can(['role' => Policy::STAFF], $config, 'admin_rules') === true
+                && Admin::can(['role' => Policy::GUEST], $config, 'admin_rules') === false
+                && Admin::can(['role' => Policy::STAFF], array_merge($config, ['admin_rules' => false]), 'admin_rules') === false
+        );
+
+        @unlink($tmpFaq);
+    }
+
+    /**
+     * @param array  $response
+     * @param string $needle
+     * @return bool
+     */
+    private static function mentions(array $response, string $needle): bool
+    {
+        $haystack = (string)($response['reply']['text'] ?? '') . json_encode($response['reply']['blocks'] ?? [], JSON_UNESCAPED_UNICODE);
+
+        return strpos(Str::lower($haystack), Str::lower($needle)) !== false;
+    }
+
     /**
      * @param array $cases
      * @return void
@@ -2248,5 +2510,49 @@ final class SelfTest
         $value = trim(preg_replace('/\s+/', ' ', $value));
 
         return Str::length($value) > 160 ? Str::slice($value, 0, 157) . '…' : $value;
+    }
+}
+
+/**
+ * A service that returns a title an answer rule forbids.
+ *
+ * @license GPLv3
+ */
+final class GuardServiceProbe
+{
+    /** @var array */
+    public $calls = [];
+
+    /**
+     * @return array
+     */
+    public function biblioList(string $q = '', int $limit = 20, int $offset = 0, string $sort = 'relevance', bool $includeHidden = false, array $options = []): array
+    {
+        $this->calls[] = ['biblio.list', [$q]];
+
+        return [
+            'items' => [[
+                'biblio_id' => 90,
+                'title' => 'Bebas Denda Juga: panduan administrasi',
+                'authors' => 'Tim Perpustakaan',
+                'isbn_issn' => '9786020000090',
+                'publish_year' => '2024',
+                'call_number' => '025.1 TIM b',
+                'item_count' => 1,
+                'loan_count' => 0,
+                'available_count' => 1,
+                'popularity' => 0,
+                'rank_score' => 100,
+            ]],
+            'count' => 1,
+            'total' => 1,
+            'limit' => $limit,
+            'offset' => $offset,
+            'query' => $q,
+            'tokens' => [$q],
+            'sort' => $sort,
+            'stage' => 'exact',
+            'suggestions' => [],
+        ];
     }
 }

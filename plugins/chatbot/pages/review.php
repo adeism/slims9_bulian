@@ -24,6 +24,7 @@ use Chatbot\Admin;
 use Chatbot\Actor;
 use Chatbot\Config;
 use Chatbot\Faq;
+use Chatbot\Guard;
 use Chatbot\Http;
 use Chatbot\Lang;
 use Chatbot\LogStore;
@@ -114,6 +115,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['action'])) {
             $chatbotNotice = $result['ok'] ? Lang::t($chatbotLocale, 'review_saved') : $result['error'];
             $chatbotOverlayData = $chatbotOverlay->load();
             $chatbotItems = Faq::items($chatbotConfig, $chatbotOverlayData);
+        } elseif ($chatbotAction === 'block' || $chatbotAction === 'out_of_scope') {
+            $phrase = trim((string)($_POST['phrase'] ?? ''));
+
+            if ($phrase !== '') {
+                $rules = Guard::rules($chatbotConfig);
+                $rules[] = [
+                    'scope' => 'question',
+                    'type' => 'phrase',
+                    'pattern' => $phrase,
+                    'category' => $chatbotAction === 'block' ? 'off-topic' : 'off-topic',
+                    'action' => $chatbotAction === 'block' ? 'refuse' : 'fallback',
+                    'note' => 'Review queue, ' . gmdate('Y-m-d'),
+                    'id' => '',
+                    'enabled' => true,
+                ];
+                $result = Guard::save($rules, $chatbotActorLabel, $chatbotConfig);
+                Guard::flush();
+                $chatbotNotice = $result['ok'] ? Lang::t($chatbotLocale, 'review_saved') : $result['error'];
+            }
         } elseif ($chatbotAction === 'preview') {
             if ($chatbotMessage !== '') {
                 $chatbotPreview = Faq::match($chatbotMessage, $chatbotConfig, $chatbotLocale);
@@ -178,6 +198,10 @@ $chatbotAudit = $chatbotOverlay->audit(15);
         <div class="alert alert-warning"><?php echo $e(Lang::t($chatbotLocale, 'review_no_match')); ?></div>
     <?php } ?>
 
+    <?php if (!Guard::enabled($chatbotConfig)) { ?>
+        <div class="alert alert-info"><?php echo $e(Lang::t($chatbotLocale, 'review_block_hint')); ?></div>
+    <?php } ?>
+
     <div class="chatbot-admin__misses">
         <h2><?php echo $e(Lang::t($chatbotLocale, 'review_open')); ?></h2>
 
@@ -200,6 +224,18 @@ $chatbotAudit = $chatbotOverlay->audit(15);
                             <input type="text" name="phrase" value="<?php echo $e($chatbotRow['q'] ?? ''); ?>" maxlength="60" size="30">
                             <button type="submit" class="btn btn-default btn-sm"><?php echo $e(Lang::t($chatbotLocale, 'review_add_keyword')); ?></button>
                             <button type="submit" name="preview_only" value="1" class="btn btn-link btn-sm"><?php echo $e(Lang::t($chatbotLocale, 'review_preview_btn')); ?></button>
+                        </form>
+                        <form method="post" class="chatbot-admin__inline">
+                            <input type="hidden" name="csrf_token" value="<?php echo $e(Http::token()); ?>">
+                            <input type="hidden" name="action" value="out_of_scope">
+                            <input type="hidden" name="phrase" value="<?php echo $e($chatbotRow['q'] ?? ''); ?>">
+                            <button type="submit" class="btn btn-default btn-sm"><?php echo $e(Lang::t($chatbotLocale, 'review_out_of_scope')); ?></button>
+                        </form>
+                        <form method="post" class="chatbot-admin__inline">
+                            <input type="hidden" name="csrf_token" value="<?php echo $e(Http::token()); ?>">
+                            <input type="hidden" name="action" value="block">
+                            <input type="hidden" name="phrase" value="<?php echo $e($chatbotRow['q'] ?? ''); ?>">
+                            <button type="submit" class="btn btn-default btn-sm"><?php echo $e(Lang::t($chatbotLocale, 'review_block')); ?></button>
                         </form>
                     </li>
                 <?php } ?>

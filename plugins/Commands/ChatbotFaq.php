@@ -18,7 +18,7 @@ use Commands\Support\CliAnythingCommand;
 
 class ChatbotFaq extends CliAnythingCommand
 {
-    protected string $signature = 'chatbot:faq {--json}';
+    protected string $signature = 'chatbot:faq {--json} {--strict}';
 
     protected string $description = 'List and validate the chatbot FAQ content';
 
@@ -35,6 +35,20 @@ class ChatbotFaq extends CliAnythingCommand
         $config = \Chatbot\Config::all();
         $items = \Chatbot\Faq::items($config);
         $problems = \Chatbot\Faq::validate($items);
+        $hidden = \Chatbot\Faq::hiddenByGuard($config);
+        $overlay = new \Chatbot\Overlay($config);
+        $overlayData = $overlay->load();
+        $strict = (bool)$this->flag('strict');
+
+        if ($strict) {
+            if (\Chatbot\Faq::source() !== '' && basename(\Chatbot\Faq::source()) === 'faq.sample.php') {
+                $problems[] = 'The chat is still answering from the bundled sample.';
+            }
+
+            foreach ($hidden as $hiddenId) {
+                $problems[] = 'Entry "' . $hiddenId . '" is hidden by an answer rule (guard).';
+            }
+        }
 
         if ($this->wantsJson()) {
             $this->output(json_encode([
@@ -42,6 +56,15 @@ class ChatbotFaq extends CliAnythingCommand
                 'source' => \Chatbot\Faq::source(),
                 'count' => count($items),
                 'items' => $items,
+                'hidden_by_guard' => $hidden,
+                'overlay' => [
+                    'file' => $overlay->path(),
+                    'version' => (int)($overlayData['version'] ?? 0),
+                    'entries' => array_map(function ($entry) {
+                        return ['id' => (string)($entry['id'] ?? ''), 'status' => (string)($entry['status'] ?? 'draft')];
+                    }, (array)($overlayData['entries'] ?? [])),
+                    'hidden' => (array)($overlayData['hidden'] ?? []),
+                ],
                 'problems' => $problems,
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
@@ -49,6 +72,7 @@ class ChatbotFaq extends CliAnythingCommand
         }
 
         $this->info('Content: ' . (\Chatbot\Faq::source() === '' ? '(none)' : \Chatbot\Faq::source()));
+        $this->info('Corrections: ' . $overlay->path() . ' (version ' . (int)($overlayData['version'] ?? 0) . ')');
 
         if (empty($items)) {
             $this->error('No FAQ entries. Copy plugins/chatbot/Support/faq.sample.php to config/chatbot.faq.php and edit it.');
@@ -67,6 +91,10 @@ class ChatbotFaq extends CliAnythingCommand
 
         $this->table(['ID', 'Question', 'Keywords'], $rows);
         $this->newLine();
+
+        if (!empty($hidden)) {
+            $this->info('Hidden by an answer rule: ' . implode(', ', $hidden));
+        }
 
         if (empty($problems)) {
             $this->success(sprintf('%d FAQ entries, no problems found.', count($items)));

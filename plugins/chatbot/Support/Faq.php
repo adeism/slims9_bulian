@@ -71,9 +71,55 @@ final class Faq
      */
     public static function items(array $config = [], ?array $overlay = null): array
     {
+        $items = self::content($config, $overlay);
+
+        if (empty($items) || !Guard::enabled($config)) {
+            return $items;
+        }
+
+        return array_values(array_filter($items, function ($item) use ($config) {
+            return is_null(Guard::answer((string)($item['answer'] ?? ''), $config));
+        }));
+    }
+
+    /**
+     * Entries an answer rule hides. Reported by `chatbot:faq --strict` so the
+     * content gets fixed instead of silently disappearing.
+     *
+     * @param array $config
+     * @return array ids
+     */
+    public static function hiddenByGuard(array $config = []): array
+    {
+        $ids = [];
+
+        if (!Guard::enabled($config)) {
+            return $ids;
+        }
+
+        foreach (self::content($config, null) as $item) {
+            if (!is_null(Guard::answer((string)($item['answer'] ?? ''), $config))) {
+                $ids[] = (string)($item['id'] ?? '');
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Content file plus overlay, before any guard filtering.
+     *
+     * @param array      $config
+     * @param array|null $overlay
+     * @return array
+     */
+    private static function content(array $config, ?array $overlay): array
+    {
         $faq = self::settings($config);
 
         if (empty($faq['enabled'])) {
+            self::$source = '';
+
             return [];
         }
 

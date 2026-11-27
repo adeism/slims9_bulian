@@ -140,6 +140,18 @@ final class Config
                 'feedback' => true,
             ],
 
+            // Question and answer guard: the short list of things the bot
+            // must not discuss or must not say. Empty and inert by default;
+            // rules are added from System -> Chatbot: rules.
+            // See plugins/chatbot/README.md#rules.
+            'guard' => [
+                'enabled' => false,
+                // Absolute path; empty = SB files/chatbot/guard.php.
+                'file' => '',
+                // Record a guard hit in the conversation log.
+                'log_hits' => true,
+            ],
+
             // Messaging channel webhook (WhatsApp Cloud, Telegram, or a
             // gateway that posts {phone, message}). Off by default; see
             // plugins/chatbot/README.md#messaging-channels.

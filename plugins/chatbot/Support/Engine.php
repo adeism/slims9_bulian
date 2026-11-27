@@ -80,6 +80,14 @@ final class Engine
             return $this->handleConfirm($confirmToken);
         }
 
+        // Whatever the library decided the bot must not discuss is refused
+        // here, before the rule table, the catalogue or the service.
+        $blocked = Guard::question($message, $this->config);
+
+        if (!is_null($blocked)) {
+            return $this->guarded($blocked);
+        }
+
         $intent = Intent::resolve($message, $this->role);
 
         // A FAQ is not a command: try it only where the rule table is unsure
@@ -1230,6 +1238,14 @@ final class Engine
      */
     private function respond(string $text, array $blocks = [], array $meta = [], array $extra = []): array
     {
+        if (empty($meta['guard']) && Guard::enabled($this->config)) {
+            $rule = Guard::answer($this->visibleText($text, $blocks), $this->config);
+
+            if (!is_null($rule)) {
+                return $this->hiddenAnswer($rule);
+            }
+        }
+
         $response = [
             'ok' => true,
             'schema' => $this->schema(),
@@ -1273,6 +1289,92 @@ final class Engine
     }
 
     /**
+     * Everything the browser would paint: the reply text and the visible
+     * strings of its blocks. Answer rules must not be bypassed by a title
+     * that arrives from the service.
+     *
+     * @param string $text
+     * @param array  $blocks
+     * @return string
+     */
+    private function visibleText(string $text, array $blocks): string
+    {
+        $parts = [$text];
+
+        foreach ($blocks as $block) {
+            if (!is_array($block)) {
+                continue;
+            }
+
+            foreach (['text', 'label', 'title', 'value', 'badge', 'meta', 'href'] as $key) {
+                if (isset($block[$key]) && is_scalar($block[$key])) {
+                    $parts[] = (string)$block[$key];
+                }
+            }
+
+            foreach ((array)($block['items'] ?? []) as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+
+                foreach (['title', 'label', 'value', 'badge', 'meta'] as $key) {
+                    if (isset($item[$key]) && is_scalar($item[$key])) {
+                        $parts[] = (string)$item[$key];
+                    }
+                }
+            }
+        }
+
+        return implode("\n", $parts);
+    }
+
+    /**
+     * A question a rule refused.
+     *
+     * @param array $rule
+     * @return array
+     */
+    private function guarded(array $rule): array
+    {
+        $key = (string)($rule['action'] ?? 'refuse') === 'fallback' ? 'guard_offtopic' : 'guard_refuse';
+
+        return $this->plain(Lang::t($this->locale, $key), 'warn', [], [
+            'guard' => (string)($rule['id'] ?? ''),
+            'guard_category' => (string)($rule['category'] ?? ''),
+        ]);
+    }
+
+    /**
+     * Build the replacement for an answer that an answer rule forbids. This
+     * cannot go through `respond()`: that would run the guard again.
+     *
+     * @param array $rule
+     * @return array
+     */
+    private function hiddenAnswer(array $rule): array
+    {
+        return [
+            'ok' => true,
+            'schema' => $this->schema(),
+            'role' => $this->role,
+            'locale' => $this->locale,
+            'reply' => [
+                'text' => Lang::t($this->locale, 'guard_answer_hidden'),
+                'blocks' => [],
+            ],
+            'suggestions' => Intent::chips($this->role, $this->locale),
+            'pending' => null,
+            'meta' => [
+                'writes_enabled' => Policy::writeAllowed($this->role, Policy::MEMBER === $this->role ? Intent::MY_EXTEND : Intent::LOAN_CHECKOUT, $this->config),
+                'confirm_ttl' => $this->ttl,
+                'tone' => 'warn',
+                'guard' => (string)($rule['id'] ?? ''),
+                'guard_category' => (string)($rule['category'] ?? ''),
+            ],
+        ];
+    }
+
+    /**
      * Short answer with an optional notice tone.
      *
      * @param string $text
@@ -1280,9 +1382,9 @@ final class Engine
      * @param array  $blocks
      * @return array
      */
-    private function plain(string $text, string $tone = '', array $blocks = []): array
+    private function plain(string $text, string $tone = '', array $blocks = [], array $extra = []): array
     {
-        $response = $this->respond($text, $blocks);
+        $response = $this->respond($text, $blocks, $extra);
 
         // The tone travels as metadata instead of a duplicated notice block:
         // the browser colours the bubble, the text is written once.

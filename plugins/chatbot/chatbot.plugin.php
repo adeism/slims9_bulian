@@ -63,6 +63,15 @@ if (!empty($chatbotConfig['admin']) && !empty($chatbotConfig['admin_overlay'])) 
 }
 
 /*
+ * Staff rules: `System -> Chatbot rules`.
+ * The blocked-question and forbidden-answer lists; empty and inert until an
+ * administrator adds a rule and turns guard.enabled on.
+ */
+if (!empty($chatbotConfig['admin']) && !empty($chatbotConfig['admin_rules'])) {
+    $plugin->registerMenu('system', 'Chatbot rules', __DIR__ . '/pages/rules.php');
+}
+
+/*
  * Messaging channel webhook: WhatsApp Cloud, Telegram, or a local gateway
  * posting {phone, message}. Inert unless it is enabled *and* a token is set,
  * exactly like the CLI-Anything HTTP bridge.
