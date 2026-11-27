@@ -200,14 +200,18 @@ click, or "yes" for a different plan cannot commit anything.
 cp config/chatbot.sample.php config/chatbot.php
 php index.php plugin:list --type=all && php index.php plugin:activate <id>
 
-php index.php chatbot:selftest                      # 56 offline checks
+php index.php chatbot:selftest                      # 71 offline checks
 php index.php chatbot:ask "pinjaman terlambat"      # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
 ```
 
 Surfaces: `index.php?p=chatbot` (OPAC menu) and **System → Chatbot** (staff).
-Full details, role matrix and the JSON contract: `plugins/chatbot/README.md`.
+The same engine also answers a webhook — `POST index.php?p=api/chatbot/v1/message`
+with `X-Chatbot-Token` — so WhatsApp or Telegram can talk to it; senders are
+mapped to a member id or a staff uid by an explicit allow-list, and everyone
+else is a guest. Full details, role matrix, payload shapes and the JSON
+contract: `plugins/chatbot/README.md`.
 
 ### Recipes
 
@@ -281,10 +285,12 @@ php plugins/chatbot/tests/run.php     # standalone runner
 php index.php chatbot:selftest        # inside SLiMS, same suite
 ```
 
-56 assertions cover the Indonesian/English intent table, role policy (guest,
+71 assertions cover the Indonesian/English intent table, role policy (guest,
 member, staff), confirmation replay/expiry/session binding, rate limits, the
 engine against a fake service, the HTTP pipeline (CSRF, empty message, disabled
-plugin) and the escaping of the rendered shell.
+plugin), the WhatsApp/Telegram channel (payload shapes, allow-list identity,
+guest/member/staff answers, YA/BATAL confirmation, replay, throttle) and the
+escaping of the rendered shell.
 
 Before enabling writes on a real instance, run `php -l` over the new PHP files,
 then `php tarsius clianything:doctor` and the write commands **without**

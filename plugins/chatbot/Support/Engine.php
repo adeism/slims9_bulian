@@ -37,12 +37,15 @@ final class Engine
     /** @var int */
     private $ttl;
 
+    /** @var bool hand the raw action to the caller instead of a browser token */
+    private $stateless;
+
     /**
      * @param array       $actor   from Actor::fromOpac()/fromAdmin()
      * @param array       $config  defaults to Config::all()
      * @param object|null $service anything with the CliAnything method set
      */
-    public function __construct(array $actor, array $config = [], $service = null)
+    public function __construct(array $actor, array $config = [], $service = null, bool $stateless = false)
     {
         $this->actor = array_merge(Actor::anonymous(), $actor);
         $this->role = Intent::normaliseRole((string)$this->actor['role']);
@@ -50,6 +53,7 @@ final class Engine
         $this->locale = Lang::locale($this->config);
         $this->service = $service;
         $this->ttl = max(30, min(900, (int)($this->config['confirm_ttl'] ?? 180)));
+        $this->stateless = $stateless;
     }
 
     /**
@@ -685,23 +689,35 @@ final class Engine
             ]);
         }
 
-        $token = Confirm::issue([
+        $action = [
             'intent' => $name,
             'params' => $params,
             'role' => $this->role,
             'actor' => $this->actorKey(),
-        ], $this->ttl);
+        ];
 
         $blocks[] = $this->block('notice', [
             'tone' => 'warn',
             'text' => Lang::t($this->locale, 'preview_hint', ['ttl' => $this->ttl]),
         ]);
 
-        return $this->respond(Lang::t($this->locale, 'preview_header'), $blocks, [
+        $intentMeta = [
             'intent' => $name,
             'confidence' => 1.0,
-        ], [
-            'token' => $token,
+        ];
+
+        // A browser gets a signed token; a messaging channel gets the raw
+        // action and stores it server-side (it has no cookie to bind to).
+        if ($this->stateless) {
+            return $this->respond(Lang::t($this->locale, 'preview_header'), $blocks, $intentMeta, [
+                'action' => $action,
+                'intent' => $name,
+                'expires_in' => $this->ttl,
+            ]);
+        }
+
+        return $this->respond(Lang::t($this->locale, 'preview_header'), $blocks, $intentMeta, [
+            'token' => Confirm::issue($action, $this->ttl),
             'intent' => $name,
             'expires_in' => $this->ttl,
         ]);
@@ -1062,17 +1078,24 @@ final class Engine
             ], $meta),
         ];
 
-        if (!empty($extra['token'])) {
+        if (!empty($extra['token']) || !empty($extra['action'])) {
             $response['pending'] = [
-                'token' => (string)$extra['token'],
                 'intent' => (string)($extra['intent'] ?? ''),
                 'expires_in' => (int)($extra['expires_in'] ?? $this->ttl),
                 'label' => Lang::t($this->locale, 'ui_confirm'),
             ];
+
+            if (!empty($extra['token'])) {
+                $response['pending']['token'] = (string)$extra['token'];
+            }
+
+            if (!empty($extra['action'])) {
+                $response['pending']['action'] = (array)$extra['action'];
+            }
         }
 
         foreach ($extra as $key => $value) {
-            if ($key !== 'token') {
+            if (!in_array($key, ['token', 'action'], true)) {
                 $response['meta'][$key] = $value;
             }
         }

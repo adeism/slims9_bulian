@@ -122,6 +122,7 @@ bot:   Rencana saja, belum ada yang ditulis
 | `confirm_ttl` | `180` | token lifetime (seconds) |
 | `max_message_length` | `500` | longer messages are refused |
 | `result_limit` | `5` | rows shown per answer |
+| `channel` | off | WhatsApp/Telegram webhook, see [Messaging channels](#messaging-channels) |
 
 Turning a gate on still requires `allow_write` in `config/cli_anything.php`;
 the chat never opens what the CLI keeps closed.
@@ -172,10 +173,111 @@ Errors use the same envelope version as the CLI:
 | `BIBLIO_NOT_FOUND`, `MEMBER_NOT_FOUND`, `ITEM_NOT_FOUND`, `LOAN_NOT_FOUND` | 422 | passed through from the service |
 | `WRITE_DISABLED`, `BULK_DISABLED`, `LOAN_REJECTED` | 422 | passed through from CLI-Anything |
 
+## Messaging channels
+
+<a id="messaging-channels"></a>
+
+The same engine, reached from a webhook instead of a browser, so a library can
+answer on WhatsApp or Telegram without a second implementation. Only three
+things differ: **identity**, **confirmation** and **formatting**.
+
+### Endpoint
+
+```
+POST index.php?p=api/chatbot/v1/message
+GET  index.php?p=api/chatbot/v1/message      # WhatsApp Cloud handshake
+```
+
+Authentication is a single shared token, sent as `X-Chatbot-Token: <token>` or
+`Authorization: Bearer <token>`. The route only exists when
+`channel.enabled` is on *and* `channel.token` is not empty; otherwise
+`404 CHATBOT_DISABLED`.
+
+The `GET` form answers the Meta verification: with `hub.mode=subscribe` and a
+matching `hub.verify_token` it echoes `hub.challenge`; anything else is `403`.
+
+### Payloads
+
+The body may be a native payload or the normalized short form; the channel is
+detected, so one URL serves every gateway.
+
+| Source | Shape understood |
+| --- | --- |
+| Telegram | `{"message": {"chat": {"id": 987654321}, "text": "pinjaman terlambat"}}` |
+| WhatsApp Cloud | `{"entry": [{"changes": [{"value": {"messages": [{"from": "628123456789", "text": {"body": "…"}}]}}]}]}` |
+| Local gateway | `{"phone": "628123456789", "message": "…"}` |
+| Normalized | `{"channel": "telegram", "from": "987654321", "text": "…"}` |
+
+### Identity
+
+`channel.members` and `channel.staff` are the entire mapping, keyed
+`<channel>:<from>` (lower-cased). A key that is not in either list is a
+**guest** — never a member guessed from the message text, never an account
+looked up by phone number. Staff entries map to a `uid`; member entries map to
+a member id and are scoped by `Policy::scope()` exactly like a logged-in OPAC
+session.
+
+```php
+'members' => ['whatsapp:628123456789' => 'M001'],
+'staff'   => ['telegram:987654321'    => 1],
+```
+
+A guest asking *"pinjaman saya"* gets the login link, not an error.
+
+### Confirmation without a cookie
+
+There is no session to bind a token to, so `Engine(…, stateless: true)` returns
+its `pending.action` as data, and `ChannelStore` keeps it per sender in one
+guarded file (`<?php exit; ?>` + JSON, `flock`, TTL pruned on read). The reply
+ends with *"Balas YA untuk menulis, atau BATAL untuk membatalkan."* — `YA`
+(localized via `channel.confirm_words`) executes the plan once, `BATAL` drops
+it, and an expired plan answers `channel_expired`. The plan is removed *before*
+it runs, so a double-sent "YA" cannot check out two copies.
+
+### Reply format
+
+Plain text, capped at 1400 characters, cut with `…`. Facts render as
+`Anggota: 123 · Rina`, records as `• Title` + indented meta + `[badge]`, and
+notices with `[i]`, `[!]`, `[ok]`, `[x]`:
+
+```
+Rencana saja, belum ada yang ditulis
+Anggota: 123 · Rina Kartika
+• Sejarah Indonesia Modern
+  B00001 · Jatuh tempo 04/12/2026 [ready]
+[!] Periksa rinciannya, lalu konfirmasi. Konfirmasi berlaku 180 detik dan hanya bisa dipakai sekali.
+
+Balas YA untuk menulis, atau BATAL untuk membatalkan.
+```
+
+### Errors
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `CHATBOT_DISABLED` | 404 | `channel.enabled` off or token empty |
+| `UNAUTHORIZED` | 401 | missing or wrong token |
+| `EMPTY_MESSAGE` | 422 | no text in the payload |
+| `RATE_LIMITED` | 429 | over `rate_limit_per_minute` for this sender |
+| `UNEXPECTED_ERROR` | 500 | see `system_log` |
+
+### Storage
+
+Pending actions and counters live in `channel.storage_dir`, defaulting to
+`SB files/chatbot/`. The directory is created `0700` with a deny-all
+`.htaccess` and an empty `index.html`; file names are `sha1(channel|from)`, so
+a phone number never appears on disk. Two buckets are counted per sender:
+`messages` (per minute) and `writes` (per hour, from `max_writes_per_hour`).
+
+### Console equivalents
+
+`php index.php chatbot:ask "pinjaman saya" --role=member --as=123` answers the
+same question with the same engine, one message at a time and without the
+store — useful to reproduce what a gateway reported.
+
 ## Console equivalents
 
 ```bash
-php index.php chatbot:selftest                 # 56 offline checks, no DB
+php index.php chatbot:selftest                 # 71 offline checks, no DB
 php index.php chatbot:ask "pinjaman terlambat" # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
@@ -197,6 +299,16 @@ no token needed because the flag itself is the operator's confirmation.
 * **Rate limits** per session for messages and for writes.
 * **PII.** `memberGet()` is always called with redaction on, so email, phone
   and address arrive as `***redacted***`. There is no `reveal` path.
+* **The webhook has its own token** and is off unless both `channel.enabled`
+  and `channel.token` are set. It is a separate switch from the browser
+  surfaces; the shared token never reaches the page.
+* **Channel identity is an allow-list.** `channel.members` / `channel.staff`
+  map a phone number or chat id to one account; an unknown sender is a guest.
+  A message can never claim a role, and the member id is overwritten by
+  `Policy::scope()` for `my.*` exactly as in the browser.
+* **Pending actions are files, not sessions.** One `sha1(channel|from).php`
+  per sender, guarded, locked and pruned; the action is deleted *before* it is
+  executed, so a replayed "YA" finds nothing.
 * **No destructive command** exists in CLI-Anything, so the chat cannot delete
   a record even if a message asks for it.
 * **CSP-friendly.** No inline JavaScript; the small admin wrapper style moved
@@ -214,6 +326,9 @@ plugins/chatbot/
 │   ├── Policy.php              role matrix, scoping, write gates (pure)
 │   ├── Actor.php               role detection from the two SLiMS sessions
 │   ├── Confirm.php             single-use HMAC confirmation tokens
+│   ├── Channel.php             webhook -> identity -> engine -> plain text
+│   ├── ChannelStore.php        per-sender pending action + counters (flock)
+│   ├── Webhook.php             the `api/chatbot/v1/message` route
 │   ├── RateLimit.php           per-session counters
 │   ├── Http.php                POST / CSRF / JSON envelope
 │   ├── View.php                server-rendered chat shell (escaped)
@@ -221,7 +336,7 @@ plugins/chatbot/
 │   ├── Str.php                 mbstring fallback
 │   ├── Config.php              defaults + config/chatbot.php
 │   ├── TestService.php         fake CLI-Anything for offline tests
-│   └── SelfTest.php            56 assertions
+│   └── SelfTest.php            71 assertions
 ├── pages/
 │   ├── opac.php                ?p=chatbot (guest + member)
 │   └── admin.php               System -> Chatbot (staff)
@@ -240,7 +355,9 @@ php index.php chatbot:selftest      # inside SLiMS, same suite + table output
 
 The suite covers the intent table (Indonesian + English), role policy,
 confirmation replay/expiry/binding, rate limits, the engine against a fake
-service, the HTTP pipeline (CSRF, empty message, disabled plugin) and the
+service, the HTTP pipeline (CSRF, empty message, disabled plugin), the messaging
+channel (payload normalization, allow-list identity, guest/member/staff
+replies, YA/BATAL flow, replay, throttle, stale action, guarded store) and the
 escaping of the rendered shell.
 
 ## Troubleshooting

@@ -64,6 +64,29 @@ final class Config
 
             // Optional "read more" link shown in the chat header.
             'help_url' => '',
+
+            // Messaging channel webhook (WhatsApp Cloud, Telegram, or a
+            // gateway that posts {phone, message}). Off by default; see
+            // plugins/chatbot/README.md#messaging-channels.
+            'channel' => [
+                'enabled' => false,
+                // Shared secret for the webhook (`X-Chatbot-Token`).
+                'token' => '',
+                // WhatsApp Cloud API subscription token (GET verification).
+                'verify_token' => '',
+                // Explicit identity map. No phone number is matched
+                // automatically: these are the only numbers/ids the bot
+                // recognises, everything else is a guest.
+                //   'whatsapp:628123456789' => 'M001'
+                //   'telegram:123456789'    => 'M002'
+                'members' => [],
+                //   'telegram:987654321'    => 1   (staff user id)
+                'staff' => [],
+                // Where pending confirmations live (empty = files/chatbot).
+                'storage_dir' => '',
+                'confirm_words' => ['ya', 'yes', 'ok', 'oke', 'konfirmasi', 'confirm', '1'],
+                'cancel_words' => ['batal', 'cancel', 'tidak', 'no', '0'],
+            ],
         ];
     }
 

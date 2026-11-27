@@ -35,6 +35,7 @@ final class SelfTest
         self::limits($cases);
         self::reads($cases);
         self::writes($cases);
+        self::channels($cases);
         self::http($cases);
 
         Config::override(null);
@@ -500,6 +501,220 @@ final class SelfTest
             ($service->lastActor['type'] ?? '') === 'member' && ($service->lastActor['id'] ?? '') === '123',
             json_encode($service->lastActor)
         );
+    }
+
+
+    /**
+     * @param array $cases
+     * @return void
+     */
+    private static function channels(array &$cases)
+    {
+        $_SESSION = [];
+        RateLimit::reset();
+
+        $dir = sys_get_temp_dir() . '/slims-chatbot-test-' . getmypid();
+        $headers = ['X-Chatbot-Token' => 'secret'];
+        $config = array_merge(self::config(), [
+            'channel' => [
+                'enabled' => true,
+                'token' => 'secret',
+                'verify_token' => 'verify',
+                'members' => ['whatsapp:628111' => '123'],
+                'staff' => ['telegram:999' => 1],
+                'storage_dir' => $dir,
+            ],
+        ]);
+
+        // ---- payload normalization -----------------------------------
+        $telegram = Channel::normalize([
+            'update_id' => 1,
+            'message' => ['chat' => ['id' => 999], 'text' => 'pinjaman terlambat'],
+        ]);
+        self::add(
+            $cases,
+            'channel: telegram payload is normalized',
+            $telegram['channel'] === 'telegram' && $telegram['from'] === '999' && $telegram['text'] === 'pinjaman terlambat',
+            json_encode($telegram)
+        );
+
+        $cloud = Channel::normalize([
+            'entry' => [[
+                'changes' => [[
+                    'value' => ['messages' => [['from' => '628111', 'text' => ['body' => 'pinjaman saya']]]],
+                ]],
+            ]],
+        ]);
+        self::add(
+            $cases,
+            'channel: whatsapp cloud payload is normalized',
+            $cloud['channel'] === 'whatsapp' && $cloud['from'] === '628111' && $cloud['text'] === 'pinjaman saya',
+            json_encode($cloud)
+        );
+
+        $gateway = Channel::normalize(['phone' => '628222', 'message' => 'cari buku sejarah']);
+        self::add(
+            $cases,
+            'channel: local gateway payload is normalized',
+            $gateway['channel'] === 'whatsapp' && $gateway['from'] === '628222' && $gateway['text'] === 'cari buku sejarah',
+            json_encode($gateway)
+        );
+
+        // ---- authentication and identity ----------------------------
+        self::add(
+            $cases,
+            'channel: token is required',
+            Channel::authorized($headers, 'secret')
+                && !Channel::authorized(['X-Chatbot-Token' => 'nope'], 'secret')
+                && !Channel::authorized(['Authorization' => 'Bearer secret'], '')
+        );
+
+        $channelConfig = Channel::config($config);
+        $guest = Channel::identity('whatsapp', '628999', $channelConfig);
+        $member = Channel::identity('whatsapp', '628111', $channelConfig);
+        $staff = Channel::identity('telegram', '999', $channelConfig);
+
+        self::add(
+            $cases,
+            'channel: identity comes from the allow-list',
+            $guest['role'] === 'guest'
+                && $member['role'] === 'member' && $member['member_id'] === '123'
+                && $staff['role'] === 'staff' && $staff['id'] === '1',
+            json_encode([$guest['role'], $member['role'], $staff['role']])
+        );
+
+        // ---- conversations ------------------------------------------
+        $service = new TestService();
+        $guestReply = Channel::handle(
+            ['channel' => 'whatsapp', 'from' => '628999', 'text' => 'pinjaman saya'],
+            $config,
+            $service,
+            $headers
+        );
+        self::add(
+            $cases,
+            'channel: unknown sender is treated as a guest',
+            $guestReply['ok'] === true
+                && $guestReply['role'] === 'guest'
+                && (strpos($guestReply['reply'], 'masuk ke area anggota') !== false
+                    || strpos($guestReply['reply'], 'log in') !== false),
+            $guestReply['reply']
+        );
+
+        $memberReply = Channel::handle(
+            ['channel' => 'whatsapp', 'from' => '628111', 'text' => 'pinjaman saya'],
+            $config,
+            new TestService(),
+            $headers
+        );
+        self::add(
+            $cases,
+            'channel: member sees their own loans',
+            $memberReply['role'] === 'member' && strpos($memberReply['reply'], 'Sejarah Indonesia Modern') !== false,
+            $memberReply['reply']
+        );
+
+        $service = new TestService();
+        $preview = Channel::handle(
+            ['channel' => 'telegram', 'from' => '999', 'text' => 'pinjamkan B00001 ke anggota 123'],
+            array_merge($config, ['allow_admin_write' => true]),
+            $service,
+            $headers
+        );
+        self::add(
+            $cases,
+            'channel: staff write asks for a reply confirmation',
+            $preview['ok'] === true && $preview['pending'] === true
+                && strpos($preview['reply'], Lang::t('en', 'channel_confirm_hint')) !== false,
+            $preview['reply']
+        );
+
+        $files = glob(rtrim($dir, '/') . '/*.php');
+        $guarded = !empty($files) && strpos((string)file_get_contents($files[0]), ChannelStore::GUARD) === 0;
+        self::add($cases, 'channel: pending file is HTTP-proof', $guarded);
+
+        $confirmed = Channel::handle(
+            ['channel' => 'telegram', 'from' => '999', 'text' => 'YA'],
+            array_merge($config, ['allow_admin_write' => true]),
+            $service,
+            $headers
+        );
+        $args = $service->callArgs('loan.checkout');
+
+        self::add(
+            $cases,
+            'channel: YA commits the previewed write',
+            $confirmed['ok'] === true
+                && $confirmed['pending'] === false
+                && strpos($confirmed['reply'], Lang::t('en', 'committed')) !== false
+                && is_array($args) && $args[2] === true,
+            json_encode(['reply' => $confirmed['reply'], 'args' => $args])
+        );
+
+        $again = Channel::handle(
+            ['channel' => 'telegram', 'from' => '999', 'text' => 'YA'],
+            array_merge($config, ['allow_admin_write' => true]),
+            $service,
+            $headers
+        );
+        self::add(
+            $cases,
+            'channel: a confirmation cannot be replayed',
+            $again['reply'] === Lang::t('en', 'channel_expired'),
+            $again['reply']
+        );
+
+        Channel::handle(
+            ['channel' => 'telegram', 'from' => '999', 'text' => 'pinjamkan B00001 ke anggota 123'],
+            array_merge($config, ['allow_admin_write' => true]),
+            $service,
+            $headers
+        );
+        $cancelled = Channel::handle(
+            ['channel' => 'telegram', 'from' => '999', 'text' => 'batal'],
+            array_merge($config, ['allow_admin_write' => true]),
+            $service,
+            $headers
+        );
+        self::add(
+            $cases,
+            'channel: BATAL discards the pending write',
+            $cancelled['reply'] === Lang::t('en', 'channel_cancelled'),
+            $cancelled['reply']
+        );
+
+        // ---- guards --------------------------------------------------
+        $unauthorized = Channel::handle(
+            ['channel' => 'whatsapp', 'from' => '628111', 'text' => 'pinjaman saya'],
+            $config,
+            new TestService(),
+            ['X-Chatbot-Token' => 'wrong']
+        );
+        self::add(
+            $cases,
+            'channel: wrong token is refused',
+            $unauthorized['ok'] === false && $unauthorized['status'] === 401
+                && $unauthorized['error']['code'] === 'UNAUTHORIZED'
+        );
+
+        $throttled = array_merge($config, ['rate_limit_per_minute' => 1]);
+        Channel::handle(['channel' => 'whatsapp', 'from' => '628777', 'text' => 'halo'], $throttled, new TestService(), $headers);
+        $blocked = Channel::handle(['channel' => 'whatsapp', 'from' => '628777', 'text' => 'halo'], $throttled, new TestService(), $headers);
+        self::add(
+            $cases,
+            'channel: flood is throttled per sender',
+            $blocked['ok'] === false && $blocked['status'] === 429,
+            json_encode($blocked['error'] ?? [])
+        );
+
+        $store = new ChannelStore($channelConfig);
+        $store->putAction('expiry-test', ['intent' => Intent::MY_EXTEND, 'params' => []], 60, time() - 600);
+        self::add($cases, 'channel: stale pending action is dropped', is_null($store->takeAction('expiry-test')));
+
+        foreach ((array)glob(rtrim($dir, '/') . '/*') as $file) {
+            @unlink($file);
+        }
+        @rmdir($dir);
     }
 
     /**

@@ -108,6 +108,48 @@ Aturan yang perlu diingat:
    **dan** `allow_admin_write` di `config/chatbot.php`, lalu coba satu transaksi
    pada data uji.
 
+### Lewat WhatsApp atau Telegram
+
+Pertanyaan tidak harus datang dari halaman web. Mesin yang sama bisa menjawab
+lewat webhook, sehingga pustakawan tetap bisa bertanya dari ponsel.
+
+1. Isi blok `channel` di `config/chatbot.php`:
+
+   ```php
+   'channel' => [
+       'enabled' => true,
+       'token' => '<rangkaian acak yang panjang>',
+       'verify_token' => '<kata sandi verifikasi Meta>',
+       'members' => ['whatsapp:628123456789' => 'M001'],
+       'staff'   => ['telegram:987654321' => 1],
+   ],
+   ```
+
+2. Arahkan gateway (WhatsApp Cloud API, BotFather, atau gateway lokal) ke
+   `https://<alamat-perpustakaan>/index.php?p=api/chatbot/v1/message` dengan
+   header `X-Chatbot-Token: <token>`. Untuk WhatsApp, isi URL verifikasi dan
+   `verify_token` dengan nilai yang sama.
+3. Kirim satu pesan percobaan dari nomor yang **tidak** ada di daftar. Balasan
+   yang benar adalah ajakan masuk area anggota, bukan data orang lain.
+
+Yang perlu dipahami:
+
+* **Daftar di `members` dan `staff` adalah satu-satunya penentu identitas.**
+  Nomor atau chat id yang tidak terdaftar diperlakukan sebagai tamu. Sistem
+  tidak pernah menebak akun dari isi pesan atau mencocokkan nomor telepon ke
+  tabel anggota.
+* **Konfirmasi dilakukan dengan membalas.** Karena tidak ada sesi peramban,
+  rencana transaksi disimpan di server per pengirim dan balasan akhirnya
+  berbunyi *"Balas YA untuk menulis, atau BATAL untuk membatalkan."* Rencana
+  kedaluwarsa dalam 180 detik dan hanya bisa dipakai sekali.
+* **Balasan berupa teks biasa**, dipotong pada 1.400 karakter agar muat di
+  WhatsApp atau SMS. Data pribadi tetap disamarkan seperti di web.
+* **Berkas sementara** disimpan di `SB files/chatbot/` (dapat diubah lewat
+  `storage_dir`), dengan `.htaccess` yang menolak akses web dan nama berkas
+  berupa hash, bukan nomor telepon.
+* **Matikan bila tidak dipakai.** `enabled => false` menutup rute webhook
+  sepenuhnya; rute bahkan tidak terdaftar.
+
 ### Bila ada yang tidak berjalan
 
 | Gejala | Kemungkinan penyebab | Tindakan |
@@ -118,6 +160,10 @@ Aturan yang perlu diingat:
 | Tombol Konfirmasi menjawab "kedaluwarsa" | melebihi 180 detik | ulangi pertanyaannya |
 | Rencana tampil tetapi tidak bisa ditulis | gerbang tulis masih tertutup | buka secara sengaja, lalu cek `doctor` |
 | Jawaban `UNEXPECTED_ERROR` | basis data atau tabel `loan_history` bermasalah | jalankan `php index.php clianything:doctor` |
+| Webhook menjawab `404 CHATBOT_DISABLED` | `channel.enabled` mati atau `token` kosong | isi keduanya, lalu simpan ulang |
+| Webhook menjawab `401 UNAUTHORIZED` | header token salah atau gateway tidak mengirimnya | samakan dengan `channel.token` |
+| Balasan selalu "masuk ke area anggota" | nomor/chat id belum terdaftar | tambahkan ke `channel.members` atau `channel.staff` |
+| Balasan `RATE_LIMITED` | terlalu banyak pesan per menit dari satu pengirim | naikkan `rate_limit_per_minute` bila perlu |
 
 ### Untuk pengembang
 

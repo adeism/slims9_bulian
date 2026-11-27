@@ -96,4 +96,41 @@ return [
      | Optional URL shown to staff ("read more"). Empty hides it.
      */
     'help_url' => '',
+    /*
+     |--------------------------------------------------------------------------
+     | Messaging channels (WhatsApp, Telegram, generic gateway)
+     |--------------------------------------------------------------------------
+     |
+     | One webhook, the same engine. Off by default: switch `enabled` on and
+     | give `token` a long random string, then point the gateway at
+     | `index.php?p=api/chatbot/v1/message` with that token in
+     | `X-Chatbot-Token` (or `Authorization: Bearer`).
+     |
+     | `verify_token` is only used by the WhatsApp GET handshake.
+     |
+     | `members` and `staff` are the whole identity model, on purpose: a phone
+     | number maps to a member id, a chat id maps to a staff `uid`, and
+     | anything else is a guest. Nothing is guessed from the message, so a
+     | spoofed number cannot become an account. Example:
+     |
+     |   'members' => ['whatsapp:628123456789' => 'M001'],
+     |   'staff'   => ['telegram:987654321'    => 1],
+     |
+     | `storage_dir` holds the per-sender pending action and rate-limit
+     | counters. Leave it empty for `SB files/chatbot/`; the directory is
+     | created 0700 with a deny-all `.htaccess` and a plain `index.html`.
+     |
+     | `confirm_words` / `cancel_words` are what the user replies instead of
+     | clicking a button. Keep them short and unambiguous.
+     */
+    'channel' => [
+        'enabled' => false,
+        'token' => '',
+        'verify_token' => '',
+        'members' => [],
+        'staff' => [],
+        'storage_dir' => '',
+        'confirm_words' => ['ya', 'yes', 'ok', 'oke', 'konfirmasi', 'lanjut', '1'],
+        'cancel_words' => ['batal', 'tidak', 'no', 'cancel', 'stop', '0'],
+    ],
 ];

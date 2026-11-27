@@ -43,3 +43,23 @@ if (!empty($chatbotConfig['opac'])) {
 if (!empty($chatbotConfig['admin'])) {
     $plugin->registerMenu('system', 'Chatbot', __DIR__ . '/pages/admin.php');
 }
+
+/*
+ * Messaging channel webhook: WhatsApp Cloud, Telegram, or a local gateway
+ * posting {phone, message}. Inert unless it is enabled *and* a token is set,
+ * exactly like the CLI-Anything HTTP bridge.
+ */
+$chatbotChannel = \Chatbot\Channel::config($chatbotConfig);
+
+if (!empty($chatbotChannel['enabled']) && trim((string)$chatbotChannel['token']) !== '') {
+    $plugin->register('custom_api_route', function ($router) {
+        $router->map('POST', '/chatbot/v1/message', function () {
+            \Chatbot\Webhook::dispatch();
+        });
+
+        // WhatsApp Cloud API subscription handshake.
+        $router->map('GET', '/chatbot/v1/message', function () {
+            \Chatbot\Webhook::verify();
+        });
+    });
+}

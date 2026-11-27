@@ -165,6 +165,11 @@ final class Lang
             'ask_loan' => 'Which loan? Give me the loan number or the item code, e.g. "kembalikan B00001".',
             'ask_items_and_member' => 'Give me the member and the item code, e.g. "pinjamkan B00001 ke anggota 123".',
             'member_not_self' => 'That loan does not belong to your account.',
+            'channel_confirm_hint' => 'Reply YA to write, or BATAL to cancel.',
+            'channel_cancelled' => 'Cancelled. Nothing was written.',
+            'channel_expired' => 'That confirmation expired. Ask again.',
+            'channel_unauthorized' => 'Unauthorized.',
+            'channel_missing' => 'I could not read that message. Send text only.',
 
             // ---- labels -------------------------------------------------
             'label_title' => 'Title',
@@ -293,6 +298,11 @@ final class Lang
             'ask_loan' => 'Pinjaman yang mana? Sebutkan nomor pinjaman atau kode item, mis. "kembalikan B00001".',
             'ask_items_and_member' => 'Sebutkan anggota dan kode item, mis. "pinjamkan B00001 ke anggota 123".',
             'member_not_self' => 'Pinjaman itu bukan milik akun Anda.',
+            'channel_confirm_hint' => 'Balas YA untuk menulis, atau BATAL untuk membatalkan.',
+            'channel_cancelled' => 'Dibatalkan. Tidak ada yang ditulis.',
+            'channel_expired' => 'Konfirmasi itu kedaluwarsa. Tanyakan lagi.',
+            'channel_unauthorized' => 'Tidak diizinkan.',
+            'channel_missing' => 'Pesan itu tidak bisa saya baca. Kirim teks saja.',
 
             // ---- labels -------------------------------------------------
             'label_title' => 'Judul',
