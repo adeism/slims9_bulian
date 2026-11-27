@@ -47,7 +47,11 @@ HTTP_ROUTES: Dict[str, Tuple[str, str, Tuple[str, ...]]] = {
 #: command -> (console command, path params, flag map)
 TARSIUS_COMMANDS: Dict[str, Tuple[str, Tuple[str, ...], Dict[str, str]]] = {
     "doctor": ("clianything:doctor", (), {}),
-    "biblio.list": ("clianything:biblio:list", (), {"q": "--q", "limit": "--limit", "offset": "--offset"}),
+    "biblio.list": (
+        "clianything:biblio:list",
+        (),
+        {"q": "--q", "limit": "--limit", "offset": "--offset", "sort": "--sort"},
+    ),
     "biblio.get": ("clianything:biblio:get", ("id",), {}),
     "item.get": ("clianything:item:get", ("code",), {}),
     "member.get": ("clianything:member:get", ("id",), {"reveal": "--reveal"}),

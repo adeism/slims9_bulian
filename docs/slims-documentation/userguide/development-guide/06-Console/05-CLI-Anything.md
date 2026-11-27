@@ -90,7 +90,7 @@ Plugin mendaftarkan rute lewat hook `custom_api_route` yang sudah dipakai berkas
 | Metode | Path | Menulis | Keterangan |
 |---|---|---|---|
 | GET | `/status` | tidak | diagnostik: gerbang, jumlah record, pemeriksaan |
-| GET | `/biblio?q=&limit=&offset=` | tidak | pencarian katalog (judul, ISBN/ISSN, nomor panggil, pengarang) |
+| GET | `/biblio?q=&limit=&offset=&sort=` | tidak | pencarian katalog bertingkat (persis → kata dipendekkan → "mungkin maksud Anda"), diurutkan relevansi/kepopuleran |
 | GET | `/biblio/{id}` | tidak | metadata + pengarang + subjek + daftar eksemplar |
 | GET | `/item/{item_code}` | tidak | satu eksemplar (barkode) + status pinjamnya |
 | GET | `/member/{id}` | tidak | kartu anggota + ringkasan pinjaman (PII disamarkan) |
@@ -114,6 +114,8 @@ Perintah mengikuti pola Console yang sudah ada (`plugins/Commands`, namespace
 ```bash
 php index.php clianything:doctor
 php index.php clianything:biblio:list --q="sejarah" --limit=5
+php index.php clianything:biblio:list --q="sejarh"            # toleran salah ketik
+php index.php clianything:biblio:list --sort=popular --limit=5 # paling sering dipinjam
 php index.php clianything:loan:list --status=overdue --json
 ```
 
@@ -123,7 +125,7 @@ juga tersedia (lihat halaman [Tarsius](03-Tarsius.md)).
 | Perintah | Kegunaan | Menulis |
 |---|---|---|
 | `clianything:doctor` | gerbang aktif/tidak, jumlah record, pemeriksaan deployment | tidak |
-| `clianything:biblio:list` | pencarian katalog | tidak |
+| `clianything:biblio:list {--q=} {--sort=} {--limit=}` | pencarian katalog (`sort`: relevance, popular, newest, title) | tidak |
 | `clianything:biblio:get {id}` | detail bibliografi | tidak |
 | `clianything:item:get {code}` | satu eksemplar | tidak |
 | `clianything:member:get {id}` | anggota + ringkasan pinjaman | tidak |

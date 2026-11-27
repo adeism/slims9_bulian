@@ -80,7 +80,8 @@ class CliAnythingHttp
                 return $this->service->biblioList(
                     $this->stringParam($params, 'q'),
                     $this->intParam($params, 'limit', 20),
-                    $this->intParam($params, 'offset', 0)
+                    $this->intParam($params, 'offset', 0),
+                    $this->stringParam($params, 'sort', false, 'relevance')
                 );
 
             case 'biblio.get':

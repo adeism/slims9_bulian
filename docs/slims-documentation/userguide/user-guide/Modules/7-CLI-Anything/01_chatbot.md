@@ -53,6 +53,51 @@ tautan untuk masuk ke area anggota.
 > **Anda:** ringkasan hari ini  
 > **Asisten:** Pinjam hari ini 8 · Kembali hari ini 5 · Terlambat 12 · …
 
+### Pencarian yang memaafkan salah ketik
+
+Tidak semua orang mengetik judul dengan benar: *"sejarh"*, *"laskr pelangi"*,
+*"metodelogi"*. Chatbot tidak langsung menjawab "tidak ada"; ia mencari dalam
+tiga tahap, dan tahap berikutnya hanya dijalankan bila tahap sebelumnya kosong.
+
+| Tahap | Yang dilakukan | Contoh |
+|---|---|---|
+| 1. persis | semua kata dicocokkan ke judul, ISBN/ISSN, nomor panggil, pengarang, subjek, dan penerbit | `sejarah indonesia` |
+| 2. kata dipendekkan | dua huruf terakhir dibuang, sehingga salah ketik di ujung kata tetap menemukan judulnya | `sejarh` → `seja` |
+| 3. "mungkin maksud Anda" | judul terdekat dihitung dari kemiripan teks | `laskr pelangi` → *Laskar Pelangi* (86%) |
+
+Urutan hasil juga diperhitungkan, bukan sekadar "yang terbaru di atas":
+
+* judul yang persis sama lebih tinggi daripada judul yang hanya memuat kata itu;
+* ISBN yang diketik (atau hasil pindai barcode) langsung menuju judulnya;
+* nomor panggil, pengarang, subjek, lalu penerbit menyusul di bawahnya;
+* bila nilainya sama, **jumlah peminjaman** menentukan — judul yang sering
+  dipinjam naik.
+
+Karena itu *"buku populer"* atau *"terlaris"* menampilkan judul yang paling
+sering dipinjam, dan tiap baris menyebutkan `41x dipinjam` supaya urutannya
+terlihat, bukan sekadar dijanjikan. *"Buku terbaru"* mengurutkan dari yang
+terakhir diperbarui. Judul yang disembunyikan dari OPAC (`opac_hide`) tidak
+muncul untuk tamu dan anggota, tetapi tetap bisa ditemukan staf.
+
+Contoh percakapan:
+
+```
+Anda: cari sejarh
+Chatbot: Ditemukan 1 dari 1 judul untuk "sejarh":
+  [i] Tidak ada yang persis cocok dengan "sejarh", jadi ini judul yang paling dekat.
+  • Sejarah Indonesia Modern [2/3 Tersedia]  Budi Santoso · 2019 · 959.8 BUD s
+
+Anda: buku populer
+Chatbot: Judul yang paling sering dipinjam:
+  • Sejarah Indonesia Modern [2/3 Tersedia]  … · 41x dipinjam
+  • Sejarah Nusantara [0/1 Tersedia]  … · 7x dipinjam
+
+Anda: cari laskar pelangii
+Chatbot: Tidak ada yang persis cocok dengan "laskar pelangii". Mungkin maksud Anda salah satu ini?
+  • Laskar Pelangi [86%]  Andrea Hirata · 2005
+  [i] Kirim lagi judulnya, pakai kata yang lebih sedikit, atau sebut nama pengarangnya.
+```
+
 ### Transaksi selalu dua langkah
 
 Asisten tidak pernah langsung menulis. Permintaan transaksi dijawab dengan
@@ -190,6 +235,8 @@ Yang perlu dipahami:
 | Tombol Konfirmasi menjawab "kedaluwarsa" | melebihi 180 detik | ulangi pertanyaannya |
 | Rencana tampil tetapi tidak bisa ditulis | gerbang tulis masih tertutup | buka secara sengaja, lalu cek `doctor` |
 | Jawaban `UNEXPECTED_ERROR` | basis data atau tabel `loan_history` bermasalah | jalankan `php index.php clianything:doctor` |
+| Buku ada tetapi tidak ditemukan | judul disembunyikan dari OPAC (`opac_hide`) | cari dari akun staf, atau periksa status sembunyinya |
+| Hasil populer tampak tidak wajar | riwayat `loan` baru sebagian dimigrasi | wajar pada data uji; urutan mengikuti jumlah pinjaman yang tercatat |
 | Webhook menjawab `404 CHATBOT_DISABLED` | `channel.enabled` mati atau `token` kosong | isi keduanya, lalu simpan ulang |
 | Webhook menjawab `401 UNAUTHORIZED` | header token salah atau gateway tidak mengirimnya | samakan dengan `channel.token` |
 | Balasan selalu "masuk ke area anggota" | nomor/chat id belum terdaftar | tambahkan ke `channel.members` atau `channel.staff` |

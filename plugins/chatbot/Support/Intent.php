@@ -178,17 +178,39 @@ final class Intent
             return self::result(self::ITEM_GET, ['code' => $codes[0]], 0.7, 'bare-item-code');
         }
 
+        // ---- curated lists: "buku populer", "yang terbaru" ----------------
+        $sortHint = self::sortHint($text);
+        if ($sortHint !== 'relevance'
+            && preg_match('/\b(buku|bacaan|koleksi|judul|daftar|list|book|books|rekomendasi|recommendation)\b/u', $text)) {
+            return self::result(
+                self::BIBLIO_LIST,
+                ['q' => self::searchQuery($text), 'sort' => $sortHint],
+                0.8,
+                'curated'
+            );
+        }
+
         // ---- search ------------------------------------------------------
         if (preg_match('/\b(cari|carikan|temukan|search|find|look for|ada (buku|judul)|apakah ada)\b/u', $text) || !is_null($isbn)) {
             $query = self::searchQuery($text, $isbn);
 
-            return self::result(self::BIBLIO_LIST, ['q' => $query], $query === '' ? 0.5 : 0.85, 'search');
+            return self::result(
+                self::BIBLIO_LIST,
+                ['q' => $query, 'sort' => self::sortHint($text)],
+                $query === '' ? 0.5 : 0.85,
+                'search'
+            );
         }
 
         // A short message with no keyword at all is most likely a title or
         // an author. Falling back to a catalogue search beats a dead end.
         if (Str::length($text) <= 60) {
-            return self::result(self::BIBLIO_LIST, ['q' => self::searchQuery($text)], 0.4, 'fallback-search');
+            return self::result(
+                self::BIBLIO_LIST,
+                ['q' => self::searchQuery($text), 'sort' => self::sortHint($text)],
+                0.4,
+                'fallback-search'
+            );
         }
 
         return self::result(self::NONE, [], 0.0, 'unmatched');
@@ -217,6 +239,28 @@ final class Intent
         $role = strtolower(trim($role));
 
         return in_array($role, ['guest', 'member', 'staff'], true) ? $role : 'guest';
+    }
+
+    /**
+     * Which ordering did the user ask for?
+     *
+     * "Buku yang paling banyak dipinjam" must not be answered with the
+     * newest record, so the hint travels with the intent.
+     *
+     * @param string $text
+     * @return string relevance|popular|newest
+     */
+    public static function sortHint(string $text): string
+    {
+        if (preg_match('/\b(populer|terlaris|terpopuler|favorit|favourite|favorite|paling banyak|sering dipinjam|most borrowed|popular|bestseller|best seller)\b/u', $text)) {
+            return 'popular';
+        }
+
+        if (preg_match('/\b(terbaru|baru|baru datang|terkini|newest|latest|recent|new arrivals?)\b/u', $text)) {
+            return 'newest';
+        }
+
+        return 'relevance';
     }
 
     /**
@@ -367,7 +411,7 @@ final class Intent
         }
 
         $query = preg_replace(
-            '/\b(cari|carikan|temukan|search|find|look|for|buku|book|books|judul|title|titles|tentang|about|apakah|ada|tersedia|available|di|in|the|a|an|please|tolong|saya|ingin|want|mau)\b/u',
+            '/\b(cari|carikan|temukan|search|find|look|for|buku|book|books|judul|title|titles|tentang|about|apakah|ada|tersedia|available|di|in|the|a|an|please|tolong|saya|ingin|want|mau|populer|terpopuler|terlaris|favorit|favorite|rekomendasi|recommended|popular|bestseller|terbaru|terkini|newest|latest)\b/u',
             ' ',
             $text
         );

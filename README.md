@@ -70,7 +70,7 @@ rule enforced in the chat.
 | Fase 2 | Write gates | `plugins/Commands/Support/CliAnything.php` | dry run by default, `--commit`, `allow_write` / `allow_bulk`, pre-bulk DB dump, `system_log` audit |
 | Fase 3 | Chatbot | `plugins/chatbot/` | percakapan untuk tamu / anggota / staf di OPAC dan admin, di atas service yang sama; tulis selalu dua langkah (rencana → konfirmasi) |
 | — | Chatbot config | `config/chatbot.sample.php` | permukaan yang aktif, gerbang tulis chat, batas laju, bahasa |
-| — | Agent harness | `cli-anything/` | installable Python CLI `cli-anything-slims` + `SKILL.md` + 27 tests |
+| — | Agent harness | `cli-anything/` | installable Python CLI `cli-anything-slims` + `SKILL.md` + 29 tests |
 | — | Configuration | `config/cli_anything.sample.php` | token, gates, PII policy, backup dir |
 | — | Docs drafts | `docs/slims-documentation/` | halaman siap-kirim untuk `slims/SLiMS-9-Documentation` (dev guide + panduan pustakawan) |
 
@@ -200,7 +200,7 @@ click, or "yes" for a different plan cannot commit anything.
 cp config/chatbot.sample.php config/chatbot.php
 php index.php plugin:list --type=all && php index.php plugin:activate <id>
 
-php index.php chatbot:selftest                      # 75 offline checks
+php index.php chatbot:selftest                      # 90 offline checks
 php index.php chatbot:ask "pinjaman terlambat"      # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
@@ -212,6 +212,13 @@ with `X-Chatbot-Token` — so WhatsApp or Telegram can talk to it; senders are
 mapped to a member id or a staff uid by an explicit allow-list, and everyone
 else is a guest. Full details, role matrix, payload shapes and the JSON
 contract: `plugins/chatbot/README.md`.
+
+Catalogue search does not assume clean input. The query is tokenised and
+stripped of filler words, matched in three stages (`exact` → shortened token →
+"did you mean"), and ranked by field (title > ISBN > call number > author >
+subject > publisher) with past loans as the tie-breaker; `--sort=popular` or a
+message like "buku populer" puts the most borrowed titles first. Records hidden
+from the OPAC stay hidden for guests and members.
 
 Nothing in the core is patched: the chatbot uses the stock plugin API
 (`registerMenu`, and the `custom_api_route` hook that `api/v1/routes.php`
@@ -281,7 +288,7 @@ It boots the compose stack, activates the bridge with a random token, seeds a
 throw-away patron, then runs doctor → item lookup → dry-run checkout → commit →
 check-in through both backends, asserting the envelopes along the way.
 
-27 tests cover the envelope contract, dry-run/commit forwarding, gate exit
+29 tests cover the envelope contract, dry-run/commit forwarding, gate exit
 codes, HTTP request shaping (token header, path escaping, POST bodies, error
 mapping) and `tarsius` argv/JSON parsing. They need no database.
 
@@ -292,12 +299,13 @@ php plugins/chatbot/tests/run.php     # standalone runner
 php index.php chatbot:selftest        # inside SLiMS, same suite
 ```
 
-75 assertions cover the Indonesian/English intent table, role policy (guest,
+90 assertions cover the Indonesian/English intent table, role policy (guest,
 member, staff), confirmation replay/expiry/session binding, rate limits, the
 engine against a fake service, the HTTP pipeline (CSRF, empty message, disabled
 plugin), the WhatsApp/Telegram channel (payload shapes, allow-list identity,
-guest/member/staff answers, YA/BATAL confirmation, replay, throttle) and the
-escaping of the rendered shell.
+guest/member/staff answers, YA/BATAL confirmation, replay, throttle), the search
+pipeline (typo fallback, did-you-mean, popularity ranking, hidden records) and
+the escaping of the rendered shell.
 
 Before enabling writes on a real instance, run `php -l` over the new PHP files,
 then `php tarsius clianything:doctor` and the write commands **without**

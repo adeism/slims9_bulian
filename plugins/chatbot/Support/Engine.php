@@ -330,13 +330,22 @@ final class Engine
     {
         $rows = isset($data['items']) && is_array($data['items']) ? $data['items'] : [];
         $query = trim((string)($params['q'] ?? ''));
+        $stage = (string)($data['stage'] ?? 'exact');
+        $sort = (string)($data['sort'] ?? ($params['sort'] ?? 'relevance'));
 
         if (empty($rows)) {
             return $this->respond(
                 Lang::t($this->locale, 'no_results', ['query' => $query === '' ? '-' : $query]),
-                [$this->block('notice', ['tone' => 'info', 'text' => Lang::t($this->locale, 'examples_' . $this->role)])],
+                [
+                    $this->block('notice', ['tone' => 'info', 'text' => Lang::t($this->locale, 'search_tips')]),
+                    $this->block('notice', ['tone' => 'info', 'text' => Lang::t($this->locale, 'examples_' . $this->role)]),
+                ],
                 $meta
             );
+        }
+
+        if ($stage === 'suggestion') {
+            return $this->renderSuggestions($rows, (array)($data['suggestions'] ?? []), $query, $meta);
         }
 
         $items = [];
@@ -348,6 +357,10 @@ final class Engine
             ], function ($value) {
                 return trim($value) !== '';
             });
+
+            if ($sort === 'popular' && (int)($row['popularity'] ?? 0) > 0) {
+                $metaLine[] = Lang::t($this->locale, 'label_borrowed', ['count' => (int)$row['popularity']]);
+            }
 
             $available = (int)($row['available_count'] ?? 0);
             $total = (int)($row['item_count'] ?? 0);
@@ -361,15 +374,82 @@ final class Engine
             ];
         }
 
-        $text = $query === ''
-            ? Lang::t($this->locale, 'biblio_header_empty')
-            : Lang::t($this->locale, 'biblio_header', [
+        $blocks = [];
+
+        // The exact stage found nothing and the shorter-token stage rescued
+        // the query: say so, otherwise the list looks like a lucky guess.
+        if ($stage === 'prefix') {
+            $blocks[] = $this->block('notice', [
+                'tone' => 'info',
+                'text' => Lang::t($this->locale, 'search_approximate', ['query' => $query === '' ? '-' : $query]),
+            ]);
+        }
+
+        $blocks[] = ['type' => 'list', 'items' => $items];
+
+        if ($query === '') {
+            $text = Lang::t($this->locale, $sort === 'popular' ? 'biblio_header_popular' : 'biblio_header_empty');
+        } else {
+            $text = Lang::t($this->locale, 'biblio_header', [
                 'count' => (int)($data['count'] ?? count($rows)),
                 'total' => (int)($data['total'] ?? count($rows)),
                 'query' => $query,
             ]);
+        }
 
-        return $this->respond($text, [['type' => 'list', 'items' => $items]], $meta);
+        if ($query !== '') {
+            if ($sort === 'popular') {
+                $text .= ' ' . Lang::t($this->locale, 'search_sorted_popular');
+            } elseif ($sort === 'newest') {
+                $text .= ' ' . Lang::t($this->locale, 'search_sorted_newest');
+            }
+        }
+
+        return $this->respond($text, $blocks, $meta);
+    }
+
+    /**
+     * "Did you mean …": a typo produced no exact or prefix match, so the
+     * service returned the closest titles instead of a dead end.
+     *
+     * @param array  $rows
+     * @param array  $suggestions
+     * @param string $query
+     * @param array  $meta
+     * @return array
+     */
+    private function renderSuggestions(array $rows, array $suggestions, string $query, array $meta): array
+    {
+        $scores = [];
+        foreach ($suggestions as $suggestion) {
+            $scores[(int)($suggestion['biblio_id'] ?? 0)] = (float)($suggestion['similarity'] ?? 0);
+        }
+
+        $items = [];
+        foreach ($rows as $row) {
+            $id = (int)($row['biblio_id'] ?? 0);
+            $score = (int)round(($scores[$id] ?? 0) * 100);
+
+            $items[] = [
+                'title' => (string)($row['title'] ?? '-'),
+                'meta' => trim(implode(' · ', array_filter([
+                    (string)($row['authors'] ?? ''),
+                    (string)($row['publish_year'] ?? ''),
+                ]))),
+                'badge' => $score . '%',
+                'tone' => $score >= 80 ? 'ok' : 'info',
+                'href' => $this->opacBiblioLink($id),
+            ];
+        }
+
+        return $this->respond(
+            Lang::t($this->locale, 'search_did_you_mean', ['query' => $query === '' ? '-' : $query]),
+            [
+                ['type' => 'list', 'items' => $items],
+                $this->block('notice', ['tone' => 'info', 'text' => Lang::t($this->locale, 'search_retry')]),
+            ],
+            $meta
+        );
     }
 
     /**
@@ -965,7 +1045,13 @@ final class Engine
 
             switch ($name) {
                 case Intent::BIBLIO_LIST:
-                    $data = $service->biblioList((string)($params['q'] ?? ''), $limit, 0);
+                    $data = $service->biblioList(
+                        (string)($params['q'] ?? ''),
+                        $limit,
+                        0,
+                        (string)($params['sort'] ?? 'relevance'),
+                        $this->role === Policy::STAFF
+                    );
                     break;
 
                 case Intent::BIBLIO_GET:

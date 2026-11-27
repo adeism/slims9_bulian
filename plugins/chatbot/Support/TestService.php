@@ -58,12 +58,41 @@ final class TestService
     /**
      * @return array
      */
-    public function biblioList(string $q = '', int $limit = 20, int $offset = 0): array
+    public function biblioList(string $q = '', int $limit = 20, int $offset = 0, string $sort = 'relevance', bool $includeHidden = false): array
     {
-        $this->calls[] = ['biblio.list', [$q, $limit]];
+        $this->calls[] = ['biblio.list', [$q, $limit, $offset, $sort, $includeHidden]];
 
         if (trim($q) === 'zzz') {
-            return ['items' => [], 'count' => 0, 'total' => 0, 'limit' => $limit, 'offset' => 0, 'query' => $q];
+            return [
+                'items' => [], 'count' => 0, 'total' => 0, 'limit' => $limit, 'offset' => 0,
+                'query' => $q, 'tokens' => ['zzz'], 'sort' => $sort, 'stage' => 'empty', 'suggestions' => [],
+            ];
+        }
+
+        // A typo that the exact stage misses; the real service shortens the
+        // token and finds the title anyway.
+        if (in_array(trim($q), ['sejarh', 'sejara'], true)) {
+            return [
+                'items' => [$this->row(12, 'Sejarah Indonesia Modern', 'Budi Santoso', '2019', '959.8 BUD s', 3, 1, 41)],
+                'count' => 1, 'total' => 1, 'limit' => $limit, 'offset' => $offset,
+                'query' => $q, 'tokens' => [trim($q)], 'sort' => $sort, 'stage' => 'prefix', 'suggestions' => [],
+            ];
+        }
+
+        // Nothing close enough: the service answers with did-you-mean titles.
+        if (in_array(trim($q), ['laskr', 'laskar pelangii'], true)) {
+            return [
+                'items' => [
+                    $this->row(21, 'Laskar Pelangi', 'Andrea Hirata', '2005', '899.221 AND l', 2, 0, 87),
+                    $this->row(22, 'Laskar Pelangi 2', 'Andrea Hirata', '2008', '899.221 AND l', 1, 0, 12),
+                ],
+                'count' => 2, 'total' => 2, 'limit' => $limit, 'offset' => $offset,
+                'query' => $q, 'tokens' => [trim($q)], 'sort' => $sort, 'stage' => 'suggestion',
+                'suggestions' => [
+                    ['biblio_id' => 21, 'title' => 'Laskar Pelangi', 'similarity' => 0.86],
+                    ['biblio_id' => 22, 'title' => 'Laskar Pelangi 2', 'similarity' => 0.79],
+                ],
+            ];
         }
 
         return [
@@ -78,6 +107,8 @@ final class TestService
                     'item_count' => 3,
                     'loan_count' => 1,
                     'available_count' => 2,
+                    'popularity' => 41,
+                    'rank_score' => 120,
                 ],
                 [
                     'biblio_id' => 13,
@@ -89,6 +120,8 @@ final class TestService
                     'item_count' => 1,
                     'loan_count' => 1,
                     'available_count' => 0,
+                    'popularity' => 7,
+                    'rank_score' => 70,
                 ],
             ],
             'count' => 2,
@@ -96,6 +129,33 @@ final class TestService
             'limit' => $limit,
             'offset' => $offset,
             'query' => $q,
+            'tokens' => $q === '' ? [] : explode(' ', trim($q)),
+            'sort' => $sort,
+            'stage' => 'exact',
+            'suggestions' => [],
+        ];
+    }
+
+
+    /**
+     * One bibliography row for the fixtures above.
+     *
+     * @return array
+     */
+    private function row(int $id, string $title, string $authors, string $year, string $callNumber, int $items, int $loans, int $popularity): array
+    {
+        return [
+            'biblio_id' => $id,
+            'title' => $title,
+            'authors' => $authors,
+            'isbn_issn' => '',
+            'publish_year' => $year,
+            'call_number' => $callNumber,
+            'item_count' => $items,
+            'loan_count' => $loans,
+            'available_count' => $items - $loans,
+            'popularity' => $popularity,
+            'rank_score' => 120,
         ];
     }
 

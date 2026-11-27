@@ -103,6 +103,8 @@ no token cost — and every answer maps to a command a human can run.
 | You type | Intent | Command behind it |
 | --- | --- | --- |
 | `cari buku sejarah` / `find book history` | `biblio.list` | `clianything:biblio:list --q=sejarah` |
+| `buku populer` / `terlaris` | `biblio.list` (`sort=popular`) | `clianything:biblio:list --sort=popular` |
+| `buku terbaru` | `biblio.list` (`sort=newest`) | `clianything:biblio:list --sort=newest` |
 | `apakah buku #12 tersedia?` | `biblio.get` | `clianything:biblio:get --id=12` |
 | `cek item B00001` | `item.get` | `clianything:item:get --code=B00001` |
 | `pinjaman saya` (member) | `my.loans` | `clianything:loan:list --member=<session>` |
@@ -117,6 +119,70 @@ no token cost — and every answer maps to a command a human can run.
 
 Short text with no keyword (`laskar pelangi`) is treated as a catalogue
 search rather than a dead end.
+
+## Search that forgives typos
+
+A library catalogue is typed by people in a hurry: `sejarh`, `laskr pelangi`,
+`metodelogi`. The search treats that as normal input instead of an error.
+
+**1. Clean the query.** Lowercase, punctuation dropped, filler words removed in
+both languages (`buku`, `cari`, `tentang`, `the`, `find`, `populer`, …), at most
+six unique tokens of two characters or more. `"Buku tentang Sejarah Indonesia?"`
+becomes `["sejarah", "indonesia"]`.
+
+**2. Three stages, each only reached when the previous found nothing.**
+
+| Stage | What it does | Example |
+| --- | --- | --- |
+| `exact` | every token, matched anywhere in title, ISBN, call number, author, subject or publisher | `sejarah indonesia` |
+| `prefix` | the same tokens shortened by two characters, so a typo near the end still lands | `sejarh` → `seja` |
+| `suggestion` | "did you mean": titles scored with `similarity()` (normalised Levenshtein) | `laskr pelangi` → *Laskar Pelangi* 86% |
+
+Only when all three fail does the answer become `no_results`, and even then it
+keeps the tip block ("a short title, an author, an ISBN").
+
+**3. Rank the matches.** Relevance is a sum over tokens, weighted by where the
+match happened, and past loans break ties — so a well-loved title wins against
+an equally relevant one, not against a better match.
+
+| Field | Weight | Notes |
+| --- | --- | --- |
+| title, exact | 120 | case-insensitive, the collation decides |
+| ISBN/ISSN, exact | 110 | a barcode scan lands here |
+| title, starts with | 70 | |
+| title, contains | 45 | |
+| call number, starts with | 40 | |
+| author | 30 | |
+| subject | 25 | |
+| publisher | 15 | |
+| popularity | tie-break | number of loans ever recorded for that title |
+
+**4. Choose the ordering.** `sort` is part of the command, the HTTP query and
+the chat intent:
+
+| `sort` | Order | Ask for it with |
+| --- | --- | --- |
+| `relevance` (default) | rank score, then popularity, then newest | `cari buku sejarah` |
+| `popular` | popularity, then rank score | `buku populer`, `terlaris`, `paling banyak dipinjam` |
+| `newest` | `last_update` | `buku terbaru` |
+| `title` | alphabetical | console/HTTP only |
+
+"Buku populer" is not a phrase the intent table ignores: it resolves to a
+catalogue browse with `sort=popular`, and the reply shows `41x dipinjam` next to
+each row so the ordering is visible, not implied.
+
+**5. Respect the OPAC.** Records with `opac_hide = 1` are excluded for guests
+and members; staff searches include them, because a hidden record is often the
+one a librarian is looking for.
+
+The same code answers all three surfaces, so a typo behaves the same from the
+console, the webhook, and the browser:
+
+```bash
+php index.php clianything:biblio:list --q="sejarh"
+php index.php clianything:biblio:list --q="" --sort=popular --limit=5
+cli-anything-slims biblio list --q "laskr pelangi"
+```
 
 ## The write flow (two steps, always)
 
@@ -310,10 +376,12 @@ store — useful to reproduce what a gateway reported.
 ## Console equivalents
 
 ```bash
-php index.php chatbot:selftest                 # 75 offline checks, no DB
+php index.php chatbot:selftest                 # 90 offline checks, no DB
 php index.php chatbot:ask "pinjaman terlambat" # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
+php index.php chatbot:ask "buku populer"                    # sort=popular
+php index.php chatbot:ask "cari sejarh"                     # typo-tolerant
 php index.php chatbot:ask "ringkasan hari ini" --json
 ```
 
@@ -372,7 +440,7 @@ plugins/chatbot/
 │   ├── vendor/
 │   │   ├── CliAnything.php     copy of the service, stock-install fallback
 │   │   └── README.md           why it exists and how to re-sync it
-│   └── SelfTest.php            75 assertions
+│   └── SelfTest.php            90 assertions
 ├── pages/
 │   ├── opac.php                ?p=chatbot (guest + member)
 │   └── admin.php               System -> Chatbot (staff)
@@ -395,8 +463,9 @@ service, the HTTP pipeline (CSRF, empty message, disabled plugin), the messaging
 channel (payload normalization, allow-list identity, guest/member/staff
 replies, YA/BATAL flow, replay, throttle, stale action, guarded store), the
 stock-install path (service resolution without the Commands plugin, envelope
-version, bundled copy in sync, greeting without a database) and the escaping
-of the rendered shell.
+version, bundled copy in sync, greeting without a database), the search
+pipeline (tokenizer, similarity, ranking fragments, typo fallback, did-you-mean
+rendering, sort hints, hidden records) and the escaping of the rendered shell.
 
 ## Troubleshooting
 

@@ -35,6 +35,7 @@ final class SelfTest
         self::limits($cases);
         self::reads($cases);
         self::writes($cases);
+        self::search($cases);
         self::channels($cases);
         self::stock($cases);
         self::http($cases);
@@ -504,6 +505,267 @@ final class SelfTest
         );
     }
 
+
+
+    /**
+     * Search that forgives typos, and the ranking behind it.
+     *
+     * The service is loaded through `Engine::serviceClass()`: on a full repo
+     * that is the Commands copy, on a chatbot-only install the bundled one.
+     *
+     * @param array $cases
+     * @return void
+     */
+    private static function search(array &$cases)
+    {
+        $_SESSION = [];
+        RateLimit::reset();
+
+        try {
+            $class = Engine::serviceClass();
+        } catch (\Throwable $error) {
+            return;
+        }
+
+        $tokens = $class::searchTokens('Buku tentang Sejarah Indonesia?');
+        self::add(
+            $cases,
+            'search: filler words are dropped from the query',
+            $tokens === ['sejarah', 'indonesia'],
+            json_encode($tokens)
+        );
+
+        $deduped = $class::searchTokens('sejarah sejarah a the buku 12');
+        self::add(
+            $cases,
+            'search: tokens are unique and short words are ignored',
+            $deduped === ['sejarah', '12'],
+            json_encode($deduped)
+        );
+
+        self::add(
+            $cases,
+            'search: a one-letter typo stays similar, a different word does not',
+            $class::similarity('sejarh', 'sejarah') > 0.8
+                && $class::similarity('sejarah', 'sejarah') === 1.0
+                && $class::similarity('abc', 'xyz') < 0.3,
+            json_encode([
+                $class::similarity('sejarh', 'sejarah'),
+                $class::similarity('abc', 'xyz'),
+            ])
+        );
+
+        $ranked = $class::rankTitles([
+            ['biblio_id' => 1, 'title' => 'Manajemen Pemasaran'],
+            ['biblio_id' => 2, 'title' => 'Laskar Pelangi'],
+            ['biblio_id' => 3, 'title' => 'Sejarah Indonesia Modern'],
+        ], 'laskr pelangi', 2);
+
+        self::add(
+            $cases,
+            'search: did-you-mean ranks the closest title first',
+            isset($ranked[0]) && $ranked[0]['biblio_id'] === 2 && count($ranked) <= 2,
+            json_encode($ranked)
+        );
+
+        // The SQL fragments are built from the same token list, so the
+        // placeholder count must match the parameter count exactly.
+        $method = new \ReflectionMethod($class, 'biblioSearchFragment');
+        $method->setAccessible(true);
+        $fake = (new \ReflectionClass($class))->newInstanceWithoutConstructor();
+
+        $exact = (array)$method->invoke($fake, ['sejarah', 'indonesia'], 'exact');
+        $prefix = (array)$method->invoke($fake, ['sejarh'], 'prefix');
+
+        self::add(
+            $cases,
+            'search: search fragments keep placeholders and parameters in step',
+            substr_count($exact['where'], '?') === count($exact['where_params'])
+                && substr_count($exact['score'], '?') === count($exact['score_params'])
+                && substr_count($prefix['where'], '?') === count($prefix['where_params'])
+                && substr_count($prefix['score'], '?') === count($prefix['score_params']),
+            json_encode([
+                'where' => substr_count($exact['where'], '?') . '/' . count($exact['where_params']),
+                'score' => substr_count($exact['score'], '?') . '/' . count($exact['score_params']),
+            ])
+        );
+
+        self::add(
+            $cases,
+            'search: the typo stage shortens the token instead of giving up',
+            strpos((string)$prefix['where_params'][0], 'seja') !== false
+                && strpos((string)$prefix['where_params'][0], 'sejarh') === false,
+            json_encode($prefix['where_params'][0] ?? null)
+        );
+
+        if (!class_exists('ChatbotSearchFake', false)) {
+            eval('namespace Chatbot; class ChatbotSearchFake extends \Commands\Support\CliAnything {
+                public $rowsQueue = [];
+                public $scalarQueue = [];
+                public $sql = [];
+                public $params = [];
+                public function __construct() {}
+                protected function rows(string $sql, array $params = []): array {
+                    $this->sql[] = $sql;
+                    $this->params[] = $params;
+                    $row = array_shift($this->rowsQueue);
+                    return is_array($row) ? $row : [];
+                }
+                protected function scalar(string $sql, array $params = []) {
+                    $next = array_shift($this->scalarQueue);
+                    return is_null($next) ? 0 : $next;
+                }
+            }');
+        }
+
+        $row = [
+            'biblio_id' => 12,
+            'title' => 'Sejarah Indonesia Modern',
+            'authors' => 'Budi Santoso',
+            'isbn_issn' => '',
+            'publish_year' => '2019',
+            'call_number' => '959.8 BUD s',
+            'item_count' => 3,
+            'loan_count' => 1,
+            'available_count' => 2,
+            'popularity' => 41,
+            'rank_score' => 25,
+        ];
+
+        $service = new \Chatbot\ChatbotSearchFake();
+        $service->rowsQueue = [[], [$row]];
+        $service->scalarQueue = [0, 1];
+
+        $rescued = $service->biblioList('sejarh', 5);
+        self::add(
+            $cases,
+            'search: a typo falls through to the prefix stage',
+            $rescued['stage'] === 'prefix' && $rescued['total'] === 1 && $rescued['count'] === 1,
+            json_encode(['stage' => $rescued['stage'], 'total' => $rescued['total']])
+        );
+
+        self::add(
+            $cases,
+            'search: the prefix stage really queries the shortened token',
+            isset($service->params[1])
+                && strpos((string)json_encode($service->params[1]), '%seja%') !== false
+                && strpos((string)json_encode($service->params[1]), '%sejarh%') === false,
+            isset($service->params[1]) ? json_encode($service->params[1]) : 'missing query'
+        );
+
+        $service = new \Chatbot\ChatbotSearchFake();
+        $service->rowsQueue = [
+            [],
+            [],
+            [
+                ['biblio_id' => 21, 'title' => 'Laskar Pelangi'],
+                ['biblio_id' => 1, 'title' => 'Manajemen Pemasaran'],
+            ],
+            [$row],
+        ];
+        $service->scalarQueue = [0, 0];
+
+        $suggested = $service->biblioList('laskr', 5);
+        self::add(
+            $cases,
+            'search: nothing close becomes a did-you-mean answer',
+            $suggested['stage'] === 'suggestion'
+                && isset($suggested['suggestions'][0])
+                && $suggested['suggestions'][0]['title'] === 'Laskar Pelangi',
+            json_encode(['stage' => $suggested['stage'], 'suggestions' => $suggested['suggestions']])
+        );
+
+        $service = new \Chatbot\ChatbotSearchFake();
+        $service->rowsQueue = [[$row]];
+        $service->scalarQueue = [1];
+        $service->biblioList('sejarah', 5, 0, 'popular');
+
+        self::add(
+            $cases,
+            'search: popular sorting is pushed into SQL',
+            isset($service->sql[0]) && strpos($service->sql[0], 'popularity DESC, rank_score') !== false,
+            isset($service->sql[0]) ? 'ordered by popularity' : 'missing query'
+        );
+
+        // ---- what the user actually sees --------------------------------
+        $engine = new Engine(Actor::anonymous('guest'), self::config(), new TestService());
+        $typo = $engine->handle('cari sejarh');
+        self::add(
+            $cases,
+            'search: a rescued typo is labelled as approximate',
+            strpos((string)($typo['reply']['text'] ?? ''), 'Sejarah Indonesia Modern') !== false
+                || strpos((string)($typo['reply']['text'] ?? ''), 'closest') !== false
+                || in_array('notice', array_column((array)($typo['reply']['blocks'] ?? []), 'type'), true),
+            json_encode($typo['reply']['blocks'] ?? [])
+        );
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $engine = new Engine(Actor::anonymous('guest'), self::config(), new TestService());
+        $didYouMean = $engine->handle('cari laskar pelangii');
+        $badges = array_column((array)($didYouMean['reply']['blocks'][0]['items'] ?? []), 'badge');
+
+        self::add(
+            $cases,
+            'search: did-you-mean shows the closest titles with a score',
+            (string)($didYouMean['reply']['text'] ?? '') === Lang::t('en', 'search_did_you_mean', ['query' => 'laskar pelangii'])
+                && in_array('86%', $badges, true),
+            json_encode(['text' => $didYouMean['reply']['text'] ?? '', 'badges' => $badges])
+        );
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $service = new TestService();
+        $engine = new Engine(Actor::anonymous('guest'), self::config(), $service);
+        $popular = $engine->handle('buku populer');
+        $call = $service->callArgs('biblio.list');
+
+        self::add(
+            $cases,
+            'search: "buku populer" asks for the popular ordering',
+            is_array($call) && ($call[3] ?? null) === 'popular' && ($call[0] ?? null) === ''
+                && (string)($popular['reply']['text'] ?? '') === Lang::t('en', 'biblio_header_popular')
+                && strpos((string)json_encode($popular['reply']['blocks'] ?? []), '41x borrowed') !== false,
+            json_encode(['args' => $call, 'text' => $popular['reply']['text'] ?? ''])
+        );
+
+
+        // ---- OPAC-hidden records --------------------------------------
+        $_SESSION = [];
+        RateLimit::reset();
+        $guestService = new TestService();
+        $guestEngine = new Engine(Actor::anonymous('guest'), self::config(), $guestService);
+        $guestEngine->handle('buku populer');
+        $guestCall = $guestService->callArgs('biblio.list');
+
+        $_SESSION = [];
+        RateLimit::reset();
+        $staffService = new TestService();
+        $staffEngine = new Engine(Actor::make('staff', '1', 'Sari'), self::config(), $staffService);
+        $staffEngine->handle('buku populer');
+        $staffCall = $staffService->callArgs('biblio.list');
+
+        self::add(
+            $cases,
+            'search: hidden records stay hidden for guests and members',
+            is_array($guestCall) && ($guestCall[4] ?? null) === false
+                && is_array($staffCall) && ($staffCall[4] ?? null) === true,
+            json_encode(['guest' => $guestCall[4] ?? null, 'staff' => $staffCall[4] ?? null])
+        );
+
+        self::add(
+            $cases,
+            'search: sort hints are read from the message',
+            Intent::sortHint('buku terlaris') === 'popular'
+                && Intent::sortHint('buku terbaru') === 'newest'
+                && Intent::sortHint('cari buku sejarah') === 'relevance',
+            json_encode([
+                Intent::sortHint('buku terlaris'),
+                Intent::sortHint('buku terbaru'),
+                Intent::sortHint('cari buku sejarah'),
+            ])
+        );
+    }
 
     /**
      * @param array $cases

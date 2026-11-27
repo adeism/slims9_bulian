@@ -32,7 +32,7 @@ every write command still works **as a dry run** and refuses to persist.
 | Command | What it does | Writes? |
 |---|---|---|
 | `doctor` | Gates, limits, table counts, deployment checks | no |
-| `biblio list --q --limit --offset` | Catalogue search (title, ISBN/ISSN, call number, author) | no |
+| `biblio list --q --limit --offset --sort` | Catalogue search (title, ISBN/ISSN, call number, author, subject); typos fall through to a shortened-token stage and then to "did you mean"; `--sort=relevance\|popular\|newest\|title` | no |
 | `biblio get <biblio_id>` | Metadata + authors + subjects + copies | no |
 | `item get <item_code>` | One copy (barcode) and its active loan | no |
 | `member get <member_id> [--reveal]` | Patron card + loan summary (PII masked by default) | no |

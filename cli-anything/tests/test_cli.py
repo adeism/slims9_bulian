@@ -21,8 +21,27 @@ def test_json_flag_accepted_after_subcommand(runner, fake):
     result = runner.invoke(cli_module.cli, ["biblio", "list", "--q", "sejarah", "--json"])
 
     assert result.exit_code == 0, result.output
-    assert fake.last == ("biblio.list", {"q": "sejarah", "limit": 20, "offset": 0})
+    assert fake.last == (
+        "biblio.list",
+        {"q": "sejarah", "limit": 20, "offset": 0, "sort": "relevance"},
+    )
     assert json.loads(result.output)["ok"] is True
+
+
+def test_biblio_sort_flag_is_forwarded(runner, fake):
+    result = runner.invoke(cli_module.cli, ["biblio", "list", "--q", "sejarah", "--sort", "popular"])
+
+    assert result.exit_code == 0, result.output
+    command, params = fake.last
+    assert command == "biblio.list"
+    assert params["sort"] == "popular"
+
+
+def test_biblio_sort_rejects_unknown_mode(runner, fake):
+    result = runner.invoke(cli_module.cli, ["biblio", "list", "--sort", "cheapest"])
+
+    assert result.exit_code == 2
+    assert "cheapest" in result.output
 
 
 def test_loan_checkout_is_dry_run_by_default(runner, fake):

@@ -314,27 +314,291 @@ class CliAnything
     // Read: bibliography
     // -----------------------------------------------------------------
 
+    // -----------------------------------------------------------------
+    // Search: tokens, typo tolerance, ranking
+    // -----------------------------------------------------------------
+
     /**
-     * @param string $q      Free text (title, ISBN, call number, author)
-     * @param int    $limit
-     * @param int    $offset
+     * Sort modes accepted by `biblio.list`.
+     *
      * @return array
      */
-    public function biblioList(string $q = '', int $limit = 20, int $offset = 0): array
+    public static function searchSorts(): array
     {
-        $limit = $this->normalizeLimit($limit);
-        $offset = max(0, $offset);
+        return ['relevance', 'popular', 'newest', 'title'];
+    }
 
-        $where = '';
-        $params = [];
-        if ($q !== '') {
-            $like = '%' . $q . '%';
-            $where = 'WHERE (b.title LIKE ? OR b.isbn_issn LIKE ? OR b.call_number LIKE ?
+    /**
+     * Turn a typed query into searchable tokens.
+     *
+     * Lowercase, punctuation removed, filler words dropped:
+     * "Buku tentang Sejarah Indonesia?" -> ['sejarah', 'indonesia'].
+     *
+     * @param string $q
+     * @return array
+     */
+    public static function searchTokens(string $q): array
+    {
+        $text = strtolower(trim($q));
+        $text = preg_replace('/[^a-z0-9]+/', ' ', $text);
+        $stop = self::searchStopWords();
+
+        $tokens = [];
+        foreach (preg_split('/\s+/', (string)$text) ?: [] as $word) {
+            $word = trim($word);
+            if ($word === '' || strlen($word) < 2 || isset($stop[$word])) {
+                continue;
+            }
+            if (!in_array($word, $tokens, true)) {
+                $tokens[] = $word;
+            }
+        }
+
+        return count($tokens) > 6 ? array_slice($tokens, 0, 6) : $tokens;
+    }
+
+    /**
+     * 0..1 similarity between two strings (1 = identical).
+     *
+     * @param string $a
+     * @param string $b
+     * @return float
+     */
+    public static function similarity(string $a, string $b): float
+    {
+        $a = substr(trim(strtolower($a)), 0, 255);
+        $b = substr(trim(strtolower($b)), 0, 255);
+        $length = max(strlen($a), strlen($b));
+
+        if ($length === 0) {
+            return 1.0;
+        }
+
+        return max(0.0, 1.0 - (levenshtein($a, $b) / $length));
+    }
+
+    /**
+     * Did-you-mean: rank titles against a typed query.
+     *
+     * Used when even the prefix fallback finds nothing, so a typo still ends
+     * with "did you mean …" instead of a dead end.
+     *
+     * @param array  $titles list of ['biblio_id' => int, 'title' => string]
+     * @param string $q
+     * @param int    $limit
+     * @param float  $threshold
+     * @return array
+     */
+    public static function rankTitles(array $titles, string $q, int $limit = 5, float $threshold = 0.55): array
+    {
+        $needle = trim(strtolower($q));
+        $words = preg_split('/\s+/', trim((string)preg_replace('/[^a-z0-9]+/', ' ', $needle))) ?: [];
+
+        $best = [];
+        foreach ($titles as $entry) {
+            $title = trim((string)($entry['title'] ?? ''));
+            if ($title === '') {
+                continue;
+            }
+
+            $score = self::similarity($needle, $title);
+            $titleWords = preg_split('/\s+/', trim((string)preg_replace('/[^a-z0-9]+/', ' ', strtolower($title)))) ?: [];
+
+            foreach ($words as $word) {
+                if ($word === '') {
+                    continue;
+                }
+                foreach ($titleWords as $candidate) {
+                    if ($candidate === '') {
+                        continue;
+                    }
+                    $wordScore = self::similarity($word, $candidate);
+                    if ($wordScore > $score) {
+                        $score = $wordScore;
+                    }
+                }
+            }
+
+            if ($score < $threshold) {
+                continue;
+            }
+
+            $best[] = [
+                'biblio_id' => (int)($entry['biblio_id'] ?? 0),
+                'title' => $title,
+                'similarity' => round($score, 2),
+            ];
+        }
+
+        usort($best, function ($left, $right) {
+            if ($left['similarity'] === $right['similarity']) {
+                return $left['biblio_id'] <=> $right['biblio_id'];
+            }
+
+            return $left['similarity'] < $right['similarity'] ? 1 : -1;
+        });
+
+        return array_slice($best, 0, max(1, $limit));
+    }
+
+    /**
+     * Words that carry no search signal in either language.
+     *
+     * Kept deliberately small: dropping too much turns "buku sejarah" into a
+     * browse and hides the ranking we just built.
+     *
+     * @return array
+     */
+    private static function searchStopWords(): array
+    {
+        static $words = null;
+
+        if (is_null($words)) {
+            $words = array_flip([
+                'a', 'an', 'the', 'of', 'and', 'or', 'in', 'on', 'at', 'for', 'to', 'is', 'are',
+                'do', 'does', 'have', 'has', 'any', 'about', 'book', 'books', 'title', 'titles',
+                'find', 'search', 'look', 'show', 'me', 'my', 'i', 'with', 'by', 'list', 'please',
+                'want', 'need', 'popular', 'best', 'new', 'newest', 'recommended', 'recommendation',
+                'ada', 'adakah', 'apa', 'apakah', 'atau', 'buku', 'bukunya', 'cari', 'carikan',
+                'dengan', 'dan', 'di', 'dari', 'dong', 'ingin', 'ini', 'itu', 'judul', 'judulnya',
+                'ke', 'koleksi', 'mau', 'mencari', 'mohon', 'pada', 'paling', 'perpustakaan',
+                'rekomendasi', 'saya', 'sedang', 'sebuah', 'tentang', 'terbaru', 'terlaris',
+                'tersedia', 'tolong', 'untuk', 'yang', 'ya', 'punya', 'bisa', 'tampilkan', 'lihat',
+                'populer', 'favorit', 'bacaan', 'baca',
+            ]);
+        }
+
+        return $words;
+    }
+
+    /**
+     * Escape LIKE wildcards in a user token.
+     *
+     * @param string $value
+     * @return string
+     */
+    private static function escapeLike(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    /**
+     * Shorten a token so a typo near its end still matches.
+     *
+     * "sejarh" -> "seja": the prefix survives a missing or extra letter.
+     *
+     * @param string $token
+     * @return string
+     */
+    private static function truncateToken(string $token): string
+    {
+        $length = strlen($token);
+
+        return $length <= 3 ? $token : substr($token, 0, max(3, $length - 2));
+    }
+
+    /**
+     * WHERE and relevance-score fragments for one search stage.
+     *
+     * @param array  $tokens
+     * @param string $mode exact|prefix
+     * @return array{where:string,where_params:array,score:string,score_params:array}
+     */
+    private function biblioSearchFragment(array $tokens, string $mode = 'exact', bool $includeHidden = false): array
+    {
+        $hidden = $includeHidden ? '' : ' AND b.opac_hide = 0';
+
+        if (empty($tokens)) {
+            return ['where' => '1 = 1' . $hidden, 'where_params' => [], 'score' => '0', 'score_params' => []];
+        }
+
+        $conditions = [];
+        $scores = [];
+        $whereParams = [];
+        $scoreParams = [];
+
+        foreach ($tokens as $token) {
+            $needle = self::escapeLike($mode === 'prefix' ? self::truncateToken($token) : $token);
+            $exact = self::escapeLike($token);
+            $like = '%' . $needle . '%';
+            $prefix = $needle . '%';
+
+            $conditions[] = "(b.title LIKE ? OR b.isbn_issn LIKE ? OR b.call_number LIKE ?
                 OR EXISTS (SELECT 1 FROM biblio_author ba
                            INNER JOIN mst_author a ON a.author_id = ba.author_id
-                           WHERE ba.biblio_id = b.biblio_id AND a.author_name LIKE ?))';
-            $params = [$like, $like, $like, $like];
+                           WHERE ba.biblio_id = b.biblio_id AND a.author_name LIKE ?)
+                OR EXISTS (SELECT 1 FROM biblio_topic bt
+                           INNER JOIN mst_topic t ON t.topic_id = bt.topic_id
+                           WHERE bt.biblio_id = b.biblio_id AND t.topic LIKE ?)
+                OR EXISTS (SELECT 1 FROM mst_publisher p
+                           WHERE p.publisher_id = b.publisher_id AND p.publisher_name LIKE ?))";
+            $whereParams = array_merge($whereParams, [$like, $prefix, $prefix, $like, $like, $like]);
+
+            $exactWeight = $mode === 'prefix' ? 40 : 120;
+            $titleWeight = $mode === 'prefix' ? 25 : 70;
+            $containsWeight = $mode === 'prefix' ? 15 : 45;
+
+            $scores[] = "(CASE
+                WHEN b.title = ? THEN {$exactWeight}
+                WHEN b.title LIKE ? THEN {$titleWeight}
+                WHEN b.title LIKE ? THEN {$containsWeight}
+                WHEN b.isbn_issn = ? THEN 110
+                WHEN b.call_number LIKE ? THEN 40
+                WHEN EXISTS (SELECT 1 FROM biblio_author ba2
+                             INNER JOIN mst_author a2 ON a2.author_id = ba2.author_id
+                             WHERE ba2.biblio_id = b.biblio_id AND a2.author_name LIKE ?) THEN 30
+                WHEN EXISTS (SELECT 1 FROM biblio_topic bt2
+                             INNER JOIN mst_topic t2 ON t2.topic_id = bt2.topic_id
+                             WHERE bt2.biblio_id = b.biblio_id AND t2.topic LIKE ?) THEN 25
+                WHEN EXISTS (SELECT 1 FROM mst_publisher p2
+                             WHERE p2.publisher_id = b.publisher_id AND p2.publisher_name LIKE ?) THEN 15
+                ELSE 0 END)";
+            $scoreParams = array_merge($scoreParams, [$exact, $prefix, $like, $exact, $prefix, $like, $like, $like]);
         }
+
+        return [
+            'where' => '(' . implode(' OR ', $conditions) . ')' . $hidden,
+            'where_params' => $whereParams,
+            'score' => implode(' + ', $scores),
+            'score_params' => $scoreParams,
+        ];
+    }
+
+    /**
+     * ORDER BY for one search stage.
+     *
+     * @param string $sort
+     * @return string
+     */
+    private function biblioSearchOrder(string $sort): string
+    {
+        switch ($sort) {
+            case 'popular':
+                return 'popularity DESC, rank_score DESC, b.last_update DESC, b.biblio_id DESC';
+            case 'newest':
+                return 'b.last_update DESC, b.biblio_id DESC';
+            case 'title':
+                return 'b.title ASC, b.biblio_id ASC';
+        }
+
+        // Relevance first, popularity as the tie-breaker: a well-loved title
+        // wins against an equally relevant one, not against a better match.
+        return 'rank_score DESC, popularity DESC, b.last_update DESC, b.biblio_id DESC';
+    }
+
+    /**
+     * Run one search stage.
+     *
+     * @param array  $tokens
+     * @param string $mode  exact|prefix
+     * @param int    $limit
+     * @param int    $offset
+     * @param string $sort
+     * @return array{0:array,1:int}
+     */
+    private function biblioSearchStage(array $tokens, string $mode, int $limit, int $offset, string $sort, bool $includeHidden = false): array
+    {
+        $fragment = $this->biblioSearchFragment($tokens, $mode, $includeHidden);
 
         $sql = "SELECT b.biblio_id, b.title, b.isbn_issn, b.publish_year, b.call_number, b.classification,
                        b.opac_hide, b.last_update, g.gmd_name,
@@ -342,26 +606,171 @@ class CliAnything
                        (SELECT COUNT(*) FROM item i2
                           INNER JOIN loan l ON l.item_code = i2.item_code AND l.is_lent = 1 AND l.is_return = 0
                           WHERE i2.biblio_id = b.biblio_id) AS loan_count,
-                       (SELECT GROUP_CONCAT(a2.author_name SEPARATOR ', ')
-                          FROM biblio_author ba2
-                          INNER JOIN mst_author a2 ON a2.author_id = ba2.author_id
-                          WHERE ba2.biblio_id = b.biblio_id) AS authors
+                       (SELECT GROUP_CONCAT(a3.author_name SEPARATOR ', ')
+                          FROM biblio_author ba3
+                          INNER JOIN mst_author a3 ON a3.author_id = ba3.author_id
+                          WHERE ba3.biblio_id = b.biblio_id) AS authors,
+                       (SELECT COUNT(*) FROM loan lp
+                          INNER JOIN item ip ON ip.item_code = lp.item_code
+                          WHERE ip.biblio_id = b.biblio_id) AS popularity,
+                       ({$fragment['score']}) AS rank_score
                 FROM biblio b
                 LEFT JOIN mst_gmd g ON g.gmd_id = b.gmd_id
-                $where
-                ORDER BY b.last_update DESC, b.biblio_id DESC
+                WHERE {$fragment['where']}
+                ORDER BY {$this->biblioSearchOrder($sort)}
                 LIMIT " . $limit . ' OFFSET ' . $offset;
 
+        $rows = $this->rows($sql, array_merge($fragment['score_params'], $fragment['where_params']));
+
         $items = [];
-        foreach ($this->rows($sql, $params) as $row) {
+        foreach ($rows as $row) {
             $row['biblio_id'] = (int)$row['biblio_id'];
             $row['item_count'] = (int)$row['item_count'];
             $row['loan_count'] = (int)$row['loan_count'];
             $row['available_count'] = $row['item_count'] - $row['loan_count'];
+            $row['popularity'] = (int)$row['popularity'];
+            $row['rank_score'] = (int)$row['rank_score'];
             $items[] = $row;
         }
 
-        $total = (int)$this->scalar('SELECT COUNT(*) AS total FROM biblio b ' . $where, $params);
+        $total = (int)$this->scalar(
+            'SELECT COUNT(*) AS total FROM biblio b WHERE ' . $fragment['where'],
+            $fragment['where_params']
+        );
+
+        return [$items, $total];
+    }
+
+    /**
+     * "Did you mean …" candidates for a query that found nothing.
+     *
+     * @param string $q
+     * @param int    $limit
+     * @return array
+     */
+    private function biblioSuggestions(string $q, int $limit = 5): array
+    {
+        $tokens = self::searchTokens($q);
+
+        if (empty($tokens)) {
+            return [];
+        }
+
+        $conditions = [];
+        $params = [];
+        foreach (array_slice($tokens, 0, 3) as $token) {
+            $conditions[] = 'b.title LIKE ?';
+            $params[] = substr(self::escapeLike($token), 0, 2) . '%';
+        }
+
+        $rows = $this->rows(
+            'SELECT b.biblio_id, b.title FROM biblio b WHERE (' . implode(' OR ', $conditions) . ')
+             AND b.opac_hide = 0 ORDER BY b.title LIMIT 300',
+            $params
+        );
+
+        return self::rankTitles($rows, $q, $limit);
+    }
+
+    /**
+     * Load bibliography rows for the given ids, in that order.
+     *
+     * @param array $ids
+     * @return array
+     */
+    private function biblioByIds(array $ids): array
+    {
+        if (empty($ids)) {
+            return [];
+        }
+
+        $ids = array_values(array_map('intval', $ids));
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+
+        $rows = $this->rows(
+            "SELECT b.biblio_id, b.title, b.isbn_issn, b.publish_year, b.call_number, b.classification,
+                    b.opac_hide, b.last_update, g.gmd_name,
+                    (SELECT COUNT(*) FROM item i WHERE i.biblio_id = b.biblio_id) AS item_count,
+                    (SELECT COUNT(*) FROM item i2
+                       INNER JOIN loan l ON l.item_code = i2.item_code AND l.is_lent = 1 AND l.is_return = 0
+                       WHERE i2.biblio_id = b.biblio_id) AS loan_count,
+                    (SELECT GROUP_CONCAT(a3.author_name SEPARATOR ', ')
+                       FROM biblio_author ba3
+                       INNER JOIN mst_author a3 ON a3.author_id = ba3.author_id
+                       WHERE ba3.biblio_id = b.biblio_id) AS authors,
+                    (SELECT COUNT(*) FROM loan lp
+                       INNER JOIN item ip ON ip.item_code = lp.item_code
+                       WHERE ip.biblio_id = b.biblio_id) AS popularity
+             FROM biblio b
+             LEFT JOIN mst_gmd g ON g.gmd_id = b.gmd_id
+             WHERE b.biblio_id IN ($placeholders)
+             ORDER BY FIELD(b.biblio_id, $placeholders)",
+            array_merge($ids, $ids)
+        );
+
+        $items = [];
+        foreach ($rows as $row) {
+            $row['biblio_id'] = (int)$row['biblio_id'];
+            $row['item_count'] = (int)$row['item_count'];
+            $row['loan_count'] = (int)$row['loan_count'];
+            $row['available_count'] = $row['item_count'] - $row['loan_count'];
+            $row['popularity'] = (int)$row['popularity'];
+            $row['rank_score'] = 0;
+            $items[] = $row;
+        }
+
+        return $items;
+    }
+
+    /**
+     * Search the catalogue, forgiving typos and incomplete words.
+     *
+     * Three stages, each only reached when the previous one found nothing:
+     *
+     *   1. exact tokens, ranked by field (title > ISBN > call number >
+     *      author > subject > publisher), with the number of past loans as
+     *      the tie-breaker;
+     *   2. the same tokens shortened by two characters, so "sejarh" and
+     *      "sej" still find "Sejarah";
+     *   3. "did you mean …" suggestions ranked with `similarity()`.
+     *
+     * @param string $q
+     * @param int    $limit
+     * @param int    $offset
+     * @param string $sort          relevance|popular|newest|title
+     * @param bool   $includeHidden staff may see records hidden from the OPAC
+     * @return array
+     */
+    public function biblioList(string $q = '', int $limit = 20, int $offset = 0, string $sort = 'relevance', bool $includeHidden = false): array
+    {
+        $limit = $this->normalizeLimit($limit);
+        $offset = max(0, $offset);
+        $sort = in_array($sort, self::searchSorts(), true) ? $sort : 'relevance';
+        $tokens = self::searchTokens($q);
+
+        $browse = empty($tokens);
+        $stage = $browse ? 'browse' : 'exact';
+        $suggestions = [];
+
+        list($items, $total) = $this->biblioSearchStage($browse ? [] : $tokens, 'exact', $limit, $offset, $sort, $includeHidden);
+
+        if (!$browse && $total === 0) {
+            $stage = 'prefix';
+            list($items, $total) = $this->biblioSearchStage($tokens, 'prefix', $limit, $offset, $sort, $includeHidden);
+        }
+
+        if (!$browse && $total === 0) {
+            $suggestions = $this->biblioSuggestions($q, 5);
+
+            if (empty($suggestions)) {
+                $stage = 'empty';
+            } else {
+                $stage = 'suggestion';
+                $items = $this->biblioByIds(array_column($suggestions, 'biblio_id'));
+                $total = count($items);
+                $items = array_slice($items, $offset, $limit);
+            }
+        }
 
         return [
             'items' => $items,
@@ -370,6 +779,11 @@ class CliAnything
             'limit' => $limit,
             'offset' => $offset,
             'query' => $q,
+            'tokens' => $tokens,
+            'sort' => $sort,
+            'stage' => $stage,
+            'suggestions' => $suggestions,
+            'include_hidden' => $includeHidden,
         ];
     }
 
@@ -1274,11 +1688,17 @@ class CliAnything
     }
 
     /**
+     * Run a query and return the rows.
+     *
+     * Protected, not private: the chatbot self-test subclasses this class and
+     * scripts these three primitives to exercise the search stages without a
+     * database.
+     *
      * @param string $sql
      * @param array  $params
      * @return array
      */
-    private function rows(string $sql, array $params = []): array
+    protected function rows(string $sql, array $params = []): array
     {
         $query = DB::query($sql, $params);
         $data = $query->toArray();
@@ -1295,7 +1715,7 @@ class CliAnything
      * @param array  $params
      * @return array|null
      */
-    private function row(string $sql, array $params = [])
+    protected function row(string $sql, array $params = [])
     {
         $rows = $this->rows($sql, $params);
 
@@ -1307,7 +1727,7 @@ class CliAnything
      * @param array  $params
      * @return mixed
      */
-    private function scalar(string $sql, array $params = [])
+    protected function scalar(string $sql, array $params = [])
     {
         $row = $this->row($sql, $params);
         if (!$row) {

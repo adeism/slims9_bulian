@@ -168,12 +168,25 @@ def biblio():
 @click.option("--q", default="", help="Search title, ISBN/ISSN, call number or author.")
 @click.option("--limit", type=int, default=20, show_default=True)
 @click.option("--offset", type=int, default=0, show_default=True)
+@click.option(
+    "--sort",
+    type=click.Choice(["relevance", "popular", "newest", "title"]),
+    default="relevance",
+    show_default=True,
+    help="relevance ranks by field match, popular by past loans.",
+)
 @common_options
 @click.pass_obj
-def biblio_list(ctx: Context, q, limit, offset, as_json_local):
-    """Search bibliography records."""
+def biblio_list(ctx: Context, q, limit, offset, sort, as_json_local):
+    """Search bibliography records (typos are tolerated)."""
 
-    ctx.exit(ctx.run("biblio.list", {"q": q, "limit": limit, "offset": offset}, as_json_local))
+    ctx.exit(
+        ctx.run(
+            "biblio.list",
+            {"q": q, "limit": limit, "offset": offset, "sort": sort},
+            as_json_local,
+        )
+    )
 
 
 @biblio.command("get")
