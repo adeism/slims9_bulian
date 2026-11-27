@@ -200,7 +200,7 @@ click, or "yes" for a different plan cannot commit anything.
 cp config/chatbot.sample.php config/chatbot.php
 php index.php plugin:list --type=all && php index.php plugin:activate <id>
 
-php index.php chatbot:selftest                      # 90 offline checks
+php index.php chatbot:selftest                      # 97 offline checks
 php index.php chatbot:ask "pinjaman terlambat"      # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
@@ -217,8 +217,12 @@ Catalogue search does not assume clean input. The query is tokenised and
 stripped of filler words, matched in three stages (`exact` → shortened token →
 "did you mean"), and ranked by field (title > ISBN > call number > author >
 subject > publisher) with past loans as the tie-breaker; `--sort=popular` or a
-message like "buku populer" puts the most borrowed titles first. Records hidden
-from the OPAC stay hidden for guests and members.
+message like "buku populer" puts the most borrowed titles first. Weights, the
+typo stage and the suggestion count are configurable (`search` block in
+`config/chatbot.php` / `config/cli_anything.php`), and a FULLTEXT index on
+`biblio.title` is used automatically when the schema has one — without the
+plugin ever altering a table. Records hidden from the OPAC stay hidden for
+guests and members.
 
 Nothing in the core is patched: the chatbot uses the stock plugin API
 (`registerMenu`, and the `custom_api_route` hook that `api/v1/routes.php`
@@ -299,7 +303,7 @@ php plugins/chatbot/tests/run.php     # standalone runner
 php index.php chatbot:selftest        # inside SLiMS, same suite
 ```
 
-90 assertions cover the Indonesian/English intent table, role policy (guest,
+97 assertions cover the Indonesian/English intent table, role policy (guest,
 member, staff), confirmation replay/expiry/session binding, rate limits, the
 engine against a fake service, the HTTP pipeline (CSRF, empty message, disabled
 plugin), the WhatsApp/Telegram channel (payload shapes, allow-list identity,

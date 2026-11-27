@@ -77,6 +77,52 @@ return [
     'max_message_length' => 500,
     'result_limit' => 5,
 
+
+    /*
+     |--------------------------------------------------------------------------
+     | Search
+     |--------------------------------------------------------------------------
+     |
+     | Catalogue search is ranked, and it tolerates typos: the query is cleaned
+     | of filler words, matched exactly, then with shortened tokens, then turned
+     | into a "did you mean" list. This block tunes that behaviour; leave any
+     | key out to keep the built-in value.
+     |
+     | `weights` are per matched token, by field. `fulltext` only has an effect
+     | when the schema has a FULLTEXT index on biblio.title (stock SLiMS 9 does
+     | not create one); the search never alters your schema.
+     |
+     | The chat passes this block to the same service the console uses, so a
+     | value here applies to WhatsApp/Telegram answers too.
+     */
+    'search' => [
+        // Ordering when the message does not ask for another one:
+        // relevance, popular, newest or title.
+        'sort' => 'relevance',
+        'weights' => [
+            'title_exact' => 120,
+            'isbn_exact' => 110,
+            'title_prefix' => 70,
+            'title_contains' => 45,
+            'call_number' => 40,
+            'author' => 30,
+            'subject' => 25,
+            'publisher' => 15,
+            'fulltext' => 35,
+        ],
+        // Shorten the token when nothing matches exactly ("sejarh").
+        'typo' => true,
+        // How many titles the "did you mean" answer may show.
+        'suggestions' => 5,
+        'min_similarity' => 0.55,
+        // Tokens kept after the query is cleaned.
+        'max_tokens' => 6,
+        // Extra filler words, on top of the built-in Indonesian/English list.
+        'stopwords' => [],
+        // Use a FULLTEXT index on biblio.title when it exists.
+        'fulltext' => true,
+    ],
+
     /*
      |--------------------------------------------------------------------------
      | Debugging

@@ -157,6 +157,10 @@ an equally relevant one, not against a better match.
 | publisher | 15 | |
 | popularity | tie-break | number of loans ever recorded for that title |
 
+The weights are the `search.weights` block of `config/chatbot.php` (see
+[Tuning](#tuning)); the `prefix` stage multiplies them by 0.35, so an
+approximate hit never outranks an exact one.
+
 **4. Choose the ordering.** `sort` is part of the command, the HTTP query and
 the chat intent:
 
@@ -174,6 +178,49 @@ each row so the ordering is visible, not implied.
 **5. Respect the OPAC.** Records with `opac_hide = 1` are excluded for guests
 and members; staff searches include them, because a hidden record is often the
 one a librarian is looking for.
+
+### Tuning
+
+Everything above lives in one config block. The chat hands it to the same
+service the console uses, so a value applies to WhatsApp/Telegram answers too.
+Omit a key and the built-in value stays.
+
+```php
+'search' => [
+    'sort' => 'relevance',          // default ordering
+    'typo' => true,                 // shortened-token rescue stage
+    'suggestions' => 5,             // how many "did you mean" titles
+    'min_similarity' => 0.55,       // below this a suggestion is noise
+    'max_tokens' => 6,              // tokens kept after cleaning
+    'stopwords' => ['skripsi'],     // extra filler words
+    'fulltext' => true,             // use a FULLTEXT index if it exists
+    'weights' => [
+        'title_exact' => 120,
+        'title_prefix' => 70,
+        'author' => 30,
+        // … any subset
+    ],
+],
+```
+
+A partial `weights` array is merged, not replaced, so bumping `author` to 45
+keeps every other weight. The console reads the same keys from the `search`
+block of `config/cli_anything.php`; per-call options (the chat) win over the
+file, and the file wins over defaults.
+
+`fulltext` is **opt-in by schema, never by us**: the service asks
+`SHOW INDEX FROM biblio WHERE Index_type = 'FULLTEXT'` once per request and
+adds `MATCH … AGAINST (… IN BOOLEAN MODE)` only when the answer is non-empty.
+Stock SLiMS 9 has no such index, so the LIKE stages do the work; on a large
+catalogue an operator may add one and get the faster path without touching a
+single line of code:
+
+```sql
+ALTER TABLE biblio ADD FULLTEXT INDEX ft_biblio_title (title);
+```
+
+Nothing in the plugin runs `ALTER TABLE`, and a missing or broken index simply
+degrades to the LIKE search instead of failing the query.
 
 The same code answers all three surfaces, so a typo behaves the same from the
 console, the webhook, and the browser:
@@ -376,7 +423,7 @@ store — useful to reproduce what a gateway reported.
 ## Console equivalents
 
 ```bash
-php index.php chatbot:selftest                 # 90 offline checks, no DB
+php index.php chatbot:selftest                 # 97 offline checks, no DB
 php index.php chatbot:ask "pinjaman terlambat" # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
@@ -440,7 +487,7 @@ plugins/chatbot/
 │   ├── vendor/
 │   │   ├── CliAnything.php     copy of the service, stock-install fallback
 │   │   └── README.md           why it exists and how to re-sync it
-│   └── SelfTest.php            90 assertions
+│   └── SelfTest.php            97 assertions
 ├── pages/
 │   ├── opac.php                ?p=chatbot (guest + member)
 │   └── admin.php               System -> Chatbot (staff)
@@ -465,7 +512,8 @@ replies, YA/BATAL flow, replay, throttle, stale action, guarded store), the
 stock-install path (service resolution without the Commands plugin, envelope
 version, bundled copy in sync, greeting without a database), the search
 pipeline (tokenizer, similarity, ranking fragments, typo fallback, did-you-mean
-rendering, sort hints, hidden records) and the escaping of the rendered shell.
+rendering, sort hints, hidden records, configurable weights, the optional
+FULLTEXT branch) and the escaping of the rendered shell.
 
 ## Troubleshooting
 

@@ -58,6 +58,38 @@ final class Config
             // How many records a chat answer shows.
             'result_limit' => 5,
 
+            // Catalogue search: ranking weights and typo tolerance. The chat
+            // passes this block to the service, which merges it over its own
+            // defaults, so a partial block is fine.
+            'search' => [
+                // Ordering when the message does not ask for another one.
+                'sort' => 'relevance',
+                // Relevance of one token, by where it matched. "popularity"
+                // is not a weight: past loans only break ties.
+                'weights' => [
+                    'title_exact' => 120,
+                    'isbn_exact' => 110,
+                    'title_prefix' => 70,
+                    'title_contains' => 45,
+                    'call_number' => 40,
+                    'author' => 30,
+                    'subject' => 25,
+                    'publisher' => 15,
+                    'fulltext' => 35,
+                ],
+                // Shorten the token when nothing matches exactly ("sejarh").
+                'typo' => true,
+                // How many titles "did you mean" may offer.
+                'suggestions' => 5,
+                'min_similarity' => 0.55,
+                // Tokens kept after the query is cleaned.
+                'max_tokens' => 6,
+                // Extra filler words on top of the built-in list.
+                'stopwords' => [],
+                // Use a FULLTEXT index on biblio.title when the schema has one.
+                'fulltext' => true,
+            ],
+
             // Debug: keep the raw query in the reply payload. Off by default
             // because chat text may contain a patron id.
             'log_queries' => false,

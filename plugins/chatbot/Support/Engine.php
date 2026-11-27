@@ -1045,12 +1045,17 @@ final class Engine
 
             switch ($name) {
                 case Intent::BIBLIO_LIST:
+                    $search = isset($this->config['search']) && is_array($this->config['search'])
+                        ? $this->config['search']
+                        : [];
+
                     $data = $service->biblioList(
                         (string)($params['q'] ?? ''),
                         $limit,
                         0,
-                        (string)($params['sort'] ?? 'relevance'),
-                        $this->role === Policy::STAFF
+                        (string)($params['sort'] ?? ($search['sort'] ?? 'relevance')),
+                        $this->role === Policy::STAFF,
+                        $search
                     );
                     break;
 

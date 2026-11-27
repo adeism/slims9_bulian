@@ -77,4 +77,34 @@ return [
      * Default page size for list endpoints (hard cap: 100).
      */
     'default_limit' => 20,
+    /**
+     * Catalogue search: ranking weights and typo tolerance.
+     *
+     * The same block is read by `biblioList()` for the console and the HTTP
+     * bridge; the chatbot passes its own copy from config/chatbot.php. Partial
+     * blocks are fine -- anything missing keeps the built-in value.
+     *
+     * `fulltext` is only used when the schema already has a FULLTEXT index on
+     * biblio.title. Nothing here runs ALTER TABLE.
+     */
+    'search' => [
+        'sort' => 'relevance',
+        'typo' => true,
+        'suggestions' => 5,
+        'min_similarity' => 0.55,
+        'max_tokens' => 6,
+        'stopwords' => [],
+        'fulltext' => true,
+        'weights' => [
+            'title_exact' => 120,
+            'isbn_exact' => 110,
+            'title_prefix' => 70,
+            'title_contains' => 45,
+            'call_number' => 40,
+            'author' => 30,
+            'subject' => 25,
+            'publisher' => 15,
+            'fulltext' => 35,
+        ],
+    ],
 ];

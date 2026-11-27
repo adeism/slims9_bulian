@@ -604,7 +604,9 @@ final class SelfTest
                 public $scalarQueue = [];
                 public $sql = [];
                 public $params = [];
+                public $fulltextAnswer = false;
                 public function __construct() {}
+                protected function hasFulltextIndex(): bool { return $this->fulltextAnswer; }
                 protected function rows(string $sql, array $params = []): array {
                     $this->sql[] = $sql;
                     $this->params[] = $params;
@@ -745,12 +747,113 @@ final class SelfTest
         $staffEngine->handle('buku populer');
         $staffCall = $staffService->callArgs('biblio.list');
 
+
+        // The chat hands its own `search` block to the service, so weights are
+        // tuned in config/chatbot.php rather than in PHP.
+        $_SESSION = [];
+        RateLimit::reset();
+        $tuned = new TestService();
+        $engine = new Engine(
+            Actor::anonymous('guest'),
+            array_merge(self::config(), ['search' => ['weights' => ['title_exact' => 55], 'typo' => false]]),
+            $tuned
+        );
+        $engine->handle('cari sejarah');
+        $tunedCall = $tuned->callArgs('biblio.list');
+
+        self::add(
+            $cases,
+            'search: the chat config reaches the service',
+            is_array($tunedCall)
+                && (int)($tunedCall[5]['weights']['title_exact'] ?? 0) === 55
+                && ($tunedCall[5]['typo'] ?? null) === false,
+            json_encode($tunedCall[5] ?? null)
+        );
+
         self::add(
             $cases,
             'search: hidden records stay hidden for guests and members',
             is_array($guestCall) && ($guestCall[4] ?? null) === false
                 && is_array($staffCall) && ($staffCall[4] ?? null) === true,
             json_encode(['guest' => $guestCall[4] ?? null, 'staff' => $staffCall[4] ?? null])
+        );
+
+
+        // ---- configurable ranking -------------------------------------
+
+        $ftService = new \Chatbot\ChatbotSearchFake();
+        $ftService->fulltextAnswer = true;
+        $ftFragment = (array)$method->invoke($ftService, ['sejarah', 'indonesia'], 'exact', false, [], true);
+
+        self::add(
+            $cases,
+            'search: the FULLTEXT bonus is added once, not once per token',
+            substr_count($ftFragment['where'], 'AGAINST') === 1
+                && substr_count($ftFragment['score'], 'AGAINST') === 1
+                && substr_count($ftFragment['where'], '?') === count($ftFragment['where_params'])
+                && substr_count($ftFragment['score'], '?') === count($ftFragment['score_params'])
+                && (string)($ftFragment['where_params'][0] ?? '') === 'sejarah* indonesia*',
+            json_encode(['where' => substr_count($ftFragment['where'], 'AGAINST'), 'score' => substr_count($ftFragment['score'], 'AGAINST')])
+        );
+
+        $service = new \Chatbot\ChatbotSearchFake();
+        $service->rowsQueue = [[$row]];
+        $service->scalarQueue = [1];
+        $service->biblioList('sejarah', 5, 0, 'relevance', false, ['weights' => ['title_exact' => 999]]);
+
+        self::add(
+            $cases,
+            'search: weights come from the caller, the rest of the table stays',
+            isset($service->sql[0]) && strpos($service->sql[0], 'THEN 999') !== false
+                && strpos($service->sql[0], 'THEN 110') !== false,
+            isset($service->sql[0]) ? 'weights applied' : 'missing query'
+        );
+
+        $service = new \Chatbot\ChatbotSearchFake();
+        $service->fulltextAnswer = true;
+        $service->rowsQueue = [[$row]];
+        $service->scalarQueue = [1];
+        $service->biblioList('sejarah', 5);
+
+        self::add(
+            $cases,
+            'search: a FULLTEXT index is used when the schema has one',
+            isset($service->sql[0]) && strpos($service->sql[0], 'MATCH (b.title) AGAINST') !== false
+                && strpos((string)json_encode($service->params[0]), 'sejarah*') !== false,
+            isset($service->sql[0]) ? 'fulltext branch present' : 'missing query'
+        );
+
+        $service = new \Chatbot\ChatbotSearchFake();
+        $service->rowsQueue = [[$row]];
+        $service->scalarQueue = [1];
+        $service->biblioList('sejarah', 5);
+
+        self::add(
+            $cases,
+            'search: no FULLTEXT index means no MATCH clause',
+            isset($service->sql[0]) && strpos($service->sql[0], 'MATCH (b.title)') === false,
+            isset($service->sql[0]) ? 'like only' : 'missing query'
+        );
+
+        $service = new \Chatbot\ChatbotSearchFake();
+        $service->rowsQueue = [[], []];
+        $service->scalarQueue = [0, 0];
+        $disabled = $service->biblioList('sejarh', 5, 0, 'relevance', false, ['typo' => false, 'suggestions' => 5]);
+
+        self::add(
+            $cases,
+            'search: the typo stage can be switched off',
+            $disabled['stage'] === 'empty'
+                && strpos((string)json_encode($service->params), '%seja%') === false,
+            json_encode(['stage' => $disabled['stage']])
+        );
+
+        $custom = $class::searchTokens('metodologi skripsi sejarah', ['stopwords' => ['skripsi'], 'max_tokens' => 2]);
+        self::add(
+            $cases,
+            'search: stopwords and the token cap are configurable',
+            $custom === ['metodologi', 'sejarah'],
+            json_encode($custom)
         );
 
         self::add(

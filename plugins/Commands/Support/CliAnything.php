@@ -51,6 +51,9 @@ class CliAnything
     /** @var bool */
     private $circulationLoaded = false;
 
+    /** @var bool|null cached answer for hasFulltextIndex() */
+    private $fulltextIndex = null;
+
     /** @var array|null actor supplied by an entry point (chat, console) */
     private $actorOverride = null;
 
@@ -329,19 +332,97 @@ class CliAnything
     }
 
     /**
+     * Ranking and typo-tolerance defaults.
+     *
+     * Every number can be overridden per call (`$options`) so the chatbot can
+     * read them from `config/chatbot.php` while the console keeps its own.
+     *
+     * @return array
+     */
+    public static function searchDefaults(): array
+    {
+        return [
+            // Ordering used when the caller does not pick one.
+            'sort' => 'relevance',
+            'weights' => [
+                'title_exact' => 120,
+                'isbn_exact' => 110,
+                'title_prefix' => 70,
+                'title_contains' => 45,
+                'call_number' => 40,
+                'author' => 30,
+                'subject' => 25,
+                'publisher' => 15,
+                'fulltext' => 35,
+            ],
+            // Shorten the token when the exact stage finds nothing.
+            'typo' => true,
+            // How many titles the "did you mean" answer may offer.
+            'suggestions' => 5,
+            'min_similarity' => 0.55,
+            // Tokens kept after cleaning the typed query.
+            'max_tokens' => 6,
+            // Extra filler words, on top of the built-in list.
+            'stopwords' => [],
+            // Use a FULLTEXT index on biblio.title when the schema has one.
+            'fulltext' => true,
+        ];
+    }
+
+    /**
+     * Merge caller options over the defaults, one level deep.
+     *
+     * @param array $options
+     * @return array
+     */
+    public static function searchOptions(array $options = []): array
+    {
+        $defaults = self::searchDefaults();
+        $merged = array_merge($defaults, $options);
+        $merged['weights'] = array_merge(
+            $defaults['weights'],
+            isset($options['weights']) && is_array($options['weights']) ? $options['weights'] : []
+        );
+        $merged['stopwords'] = array_values(array_filter(array_map('strval', (array)($merged['stopwords'] ?? []))));
+
+        return $merged;
+    }
+
+    /**
+     * Read one weight as a positive integer.
+     *
+     * @param array  $weights
+     * @param string $key
+     * @return int
+     */
+    private static function weight(array $weights, string $key): int
+    {
+        $default = self::searchDefaults()['weights'][$key] ?? 0;
+        $value = isset($weights[$key]) && is_numeric($weights[$key]) ? (int)$weights[$key] : $default;
+
+        return max(0, min(1000, $value));
+    }
+
+    /**
      * Turn a typed query into searchable tokens.
      *
      * Lowercase, punctuation removed, filler words dropped:
      * "Buku tentang Sejarah Indonesia?" -> ['sejarah', 'indonesia'].
      *
      * @param string $q
+     * @param array  $options search options (stopwords, max_tokens)
      * @return array
      */
-    public static function searchTokens(string $q): array
+    public static function searchTokens(string $q, array $options = []): array
     {
+        $options = self::searchOptions($options);
         $text = strtolower(trim($q));
         $text = preg_replace('/[^a-z0-9]+/', ' ', $text);
         $stop = self::searchStopWords();
+
+        foreach ($options['stopwords'] as $extra) {
+            $stop[strtolower(trim((string)$extra))] = true;
+        }
 
         $tokens = [];
         foreach (preg_split('/\s+/', (string)$text) ?: [] as $word) {
@@ -354,7 +435,9 @@ class CliAnything
             }
         }
 
-        return count($tokens) > 6 ? array_slice($tokens, 0, 6) : $tokens;
+        $max = max(1, min(12, (int)$options['max_tokens']));
+
+        return count($tokens) > $max ? array_slice($tokens, 0, $max) : $tokens;
     }
 
     /**
@@ -504,7 +587,7 @@ class CliAnything
      * @param string $mode exact|prefix
      * @return array{where:string,where_params:array,score:string,score_params:array}
      */
-    private function biblioSearchFragment(array $tokens, string $mode = 'exact', bool $includeHidden = false): array
+    private function biblioSearchFragment(array $tokens, string $mode = 'exact', bool $includeHidden = false, array $weights = [], bool $fulltext = false): array
     {
         $hidden = $includeHidden ? '' : ' AND b.opac_hide = 0';
 
@@ -516,6 +599,14 @@ class CliAnything
         $scores = [];
         $whereParams = [];
         $scoreParams = [];
+
+        // A FULLTEXT index on biblio.title widens the exact stage: boolean
+        // mode with a trailing star matches prefixes, so "sejar" hits
+        // "Sejarah" even without the LIKE branches.
+        if ($mode === 'exact' && $fulltext && $this->hasFulltextIndex()) {
+            $conditions[] = 'MATCH (b.title) AGAINST (? IN BOOLEAN MODE)';
+            $whereParams[] = self::fulltextExpression($tokens);
+        }
 
         foreach ($tokens as $token) {
             $needle = self::escapeLike($mode === 'prefix' ? self::truncateToken($token) : $token);
@@ -534,26 +625,42 @@ class CliAnything
                            WHERE p.publisher_id = b.publisher_id AND p.publisher_name LIKE ?))";
             $whereParams = array_merge($whereParams, [$like, $prefix, $prefix, $like, $like, $like]);
 
-            $exactWeight = $mode === 'prefix' ? 40 : 120;
-            $titleWeight = $mode === 'prefix' ? 25 : 70;
-            $containsWeight = $mode === 'prefix' ? 15 : 45;
+            // The prefix stage is a rescue, not a promotion: the same fields
+            // weigh less so an approximate hit never outranks an exact one.
+            $scale = $mode === 'prefix' ? 0.35 : 1.0;
+            $exactWeight = (int)round(self::weight($weights, 'title_exact') * $scale);
+            $titleWeight = (int)round(self::weight($weights, 'title_prefix') * $scale);
+            $containsWeight = (int)round(self::weight($weights, 'title_contains') * $scale);
+            $isbnWeight = (int)round(self::weight($weights, 'isbn_exact') * $scale);
+            $callWeight = (int)round(self::weight($weights, 'call_number') * $scale);
+            $authorWeight = (int)round(self::weight($weights, 'author') * $scale);
+            $subjectWeight = (int)round(self::weight($weights, 'subject') * $scale);
+            $publisherWeight = (int)round(self::weight($weights, 'publisher') * $scale);
 
             $scores[] = "(CASE
                 WHEN b.title = ? THEN {$exactWeight}
                 WHEN b.title LIKE ? THEN {$titleWeight}
                 WHEN b.title LIKE ? THEN {$containsWeight}
-                WHEN b.isbn_issn = ? THEN 110
-                WHEN b.call_number LIKE ? THEN 40
+                WHEN b.isbn_issn = ? THEN {$isbnWeight}
+                WHEN b.call_number LIKE ? THEN {$callWeight}
                 WHEN EXISTS (SELECT 1 FROM biblio_author ba2
                              INNER JOIN mst_author a2 ON a2.author_id = ba2.author_id
-                             WHERE ba2.biblio_id = b.biblio_id AND a2.author_name LIKE ?) THEN 30
+                             WHERE ba2.biblio_id = b.biblio_id AND a2.author_name LIKE ?) THEN {$authorWeight}
                 WHEN EXISTS (SELECT 1 FROM biblio_topic bt2
                              INNER JOIN mst_topic t2 ON t2.topic_id = bt2.topic_id
-                             WHERE bt2.biblio_id = b.biblio_id AND t2.topic LIKE ?) THEN 25
+                             WHERE bt2.biblio_id = b.biblio_id AND t2.topic LIKE ?) THEN {$subjectWeight}
                 WHEN EXISTS (SELECT 1 FROM mst_publisher p2
-                             WHERE p2.publisher_id = b.publisher_id AND p2.publisher_name LIKE ?) THEN 15
+                             WHERE p2.publisher_id = b.publisher_id AND p2.publisher_name LIKE ?) THEN {$publisherWeight}
                 ELSE 0 END)";
             $scoreParams = array_merge($scoreParams, [$exact, $prefix, $like, $exact, $prefix, $like, $like, $like]);
+
+        }
+
+        // One bonus for the whole query, not one per token.
+        if ($mode === 'exact' && $fulltext && $this->hasFulltextIndex()) {
+            $scores[] = '(CASE WHEN MATCH (b.title) AGAINST (? IN BOOLEAN MODE) THEN '
+                . self::weight($weights, 'fulltext') . ' ELSE 0 END)';
+            $scoreParams[] = self::fulltextExpression($tokens);
         }
 
         return [
@@ -562,6 +669,20 @@ class CliAnything
             'score' => implode(' + ', $scores),
             'score_params' => $scoreParams,
         ];
+    }
+
+    /**
+     * Boolean-mode FULLTEXT expression for a token list: every token becomes
+     * a prefix, so "sejarah indones*" matches "Sejarah Indonesia".
+     *
+     * @param array $tokens
+     * @return string
+     */
+    private static function fulltextExpression(array $tokens): string
+    {
+        return implode(' ', array_map(function ($token) {
+            return preg_replace('/[^a-z0-9]/', '', strtolower((string)$token)) . '*';
+        }, $tokens));
     }
 
     /**
@@ -596,9 +717,16 @@ class CliAnything
      * @param string $sort
      * @return array{0:array,1:int}
      */
-    private function biblioSearchStage(array $tokens, string $mode, int $limit, int $offset, string $sort, bool $includeHidden = false): array
+    private function biblioSearchStage(array $tokens, string $mode, int $limit, int $offset, string $sort, bool $includeHidden = false, array $options = []): array
     {
-        $fragment = $this->biblioSearchFragment($tokens, $mode, $includeHidden);
+        $options = self::searchOptions($options);
+        $fragment = $this->biblioSearchFragment(
+            $tokens,
+            $mode,
+            $includeHidden,
+            (array)$options['weights'],
+            (bool)$options['fulltext']
+        );
 
         $sql = "SELECT b.biblio_id, b.title, b.isbn_issn, b.publish_year, b.call_number, b.classification,
                        b.opac_hide, b.last_update, g.gmd_name,
@@ -648,9 +776,10 @@ class CliAnything
      * @param int    $limit
      * @return array
      */
-    private function biblioSuggestions(string $q, int $limit = 5): array
+    private function biblioSuggestions(string $q, int $limit = 5, array $options = []): array
     {
-        $tokens = self::searchTokens($q);
+        $options = self::searchOptions($options);
+        $tokens = self::searchTokens($q, $options);
 
         if (empty($tokens)) {
             return [];
@@ -669,7 +798,7 @@ class CliAnything
             $params
         );
 
-        return self::rankTitles($rows, $q, $limit);
+        return self::rankTitles($rows, $q, $limit, (float)$options['min_similarity']);
     }
 
     /**
@@ -723,6 +852,33 @@ class CliAnything
     }
 
     /**
+     * Does this catalogue have a FULLTEXT index on biblio.title?
+     *
+     * Stock SLiMS 9 does not create one, so the answer is usually false and
+     * the LIKE stages do all the work. When an operator added the index (a
+     * reasonable step on a large catalogue), the exact stage also asks MySQL
+     * for a boolean-mode prefix match. The answer is cached per request and
+     * any failure degrades to false: a missing index must never break search.
+     *
+     * @return bool
+     */
+    protected function hasFulltextIndex(): bool
+    {
+        if (!is_null($this->fulltextIndex)) {
+            return (bool)$this->fulltextIndex;
+        }
+
+        try {
+            $rows = $this->rows("SHOW INDEX FROM biblio WHERE Index_type = 'FULLTEXT'");
+            $this->fulltextIndex = !empty($rows);
+        } catch (\Throwable $error) {
+            $this->fulltextIndex = false;
+        }
+
+        return (bool)$this->fulltextIndex;
+    }
+
+    /**
      * Search the catalogue, forgiving typos and incomplete words.
      *
      * Three stages, each only reached when the previous one found nothing:
@@ -739,28 +895,36 @@ class CliAnything
      * @param int    $offset
      * @param string $sort          relevance|popular|newest|title
      * @param bool   $includeHidden staff may see records hidden from the OPAC
+     * @param array  $options       ranking/typo options, see searchDefaults()
      * @return array
      */
-    public function biblioList(string $q = '', int $limit = 20, int $offset = 0, string $sort = 'relevance', bool $includeHidden = false): array
+    public function biblioList(string $q = '', int $limit = 20, int $offset = 0, string $sort = 'relevance', bool $includeHidden = false, array $options = []): array
     {
         $limit = $this->normalizeLimit($limit);
         $offset = max(0, $offset);
+
+        // config/cli_anything.php may carry a `search` block; per-call options
+        // (the chatbot's config) win over it, and both merge over defaults.
+        $fromConfig = $this->option('search', []);
+        $options = self::searchOptions(array_merge(is_array($fromConfig) ? $fromConfig : [], $options));
+
+        $sort = in_array($sort, self::searchSorts(), true) ? $sort : (string)$options['sort'];
         $sort = in_array($sort, self::searchSorts(), true) ? $sort : 'relevance';
-        $tokens = self::searchTokens($q);
+        $tokens = self::searchTokens($q, $options);
 
         $browse = empty($tokens);
         $stage = $browse ? 'browse' : 'exact';
         $suggestions = [];
 
-        list($items, $total) = $this->biblioSearchStage($browse ? [] : $tokens, 'exact', $limit, $offset, $sort, $includeHidden);
+        list($items, $total) = $this->biblioSearchStage($browse ? [] : $tokens, 'exact', $limit, $offset, $sort, $includeHidden, $options);
 
-        if (!$browse && $total === 0) {
+        if (!$browse && $total === 0 && !empty($options['typo'])) {
             $stage = 'prefix';
-            list($items, $total) = $this->biblioSearchStage($tokens, 'prefix', $limit, $offset, $sort, $includeHidden);
+            list($items, $total) = $this->biblioSearchStage($tokens, 'prefix', $limit, $offset, $sort, $includeHidden, $options);
         }
 
         if (!$browse && $total === 0) {
-            $suggestions = $this->biblioSuggestions($q, 5);
+            $suggestions = $this->biblioSuggestions($q, max(1, (int)$options['suggestions']), $options);
 
             if (empty($suggestions)) {
                 $stage = 'empty';
@@ -784,6 +948,11 @@ class CliAnything
             'stage' => $stage,
             'suggestions' => $suggestions,
             'include_hidden' => $includeHidden,
+            'search' => [
+                'typo' => (bool)$options['typo'],
+                'fulltext' => (bool)$options['fulltext'] && $this->hasFulltextIndex(),
+                'weights' => (array)$options['weights'],
+            ],
         ];
     }
 

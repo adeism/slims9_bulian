@@ -98,6 +98,38 @@ Chatbot: Tidak ada yang persis cocok dengan "laskar pelangii". Mungkin maksud An
   [i] Kirim lagi judulnya, pakai kata yang lebih sedikit, atau sebut nama pengarangnya.
 ```
 
+
+#### Bisa disesuaikan
+
+Semua angka di atas bukan pajangan; Ubah lewat blok `search` di
+`config/chatbot.php`. Cukup tulis kunci yang ingin diubah — sisanya memakai
+nilai bawaan, dan blok `weights` digabung, bukan ditimpa seluruhnya.
+
+```php
+'search' => [
+    'sort' => 'relevance',
+    'typo' => true,             // tahap "kata dipendekkan"
+    'suggestions' => 5,         // jumlah judul pada "mungkin maksud Anda"
+    'min_similarity' => 0.55,   // di bawah ini dianggap tidak mirip
+    'stopwords' => ['skripsi'], // kata yang diabaikan, tambahan
+    'weights' => [
+        'author' => 45,         // pengarang jadi lebih penting
+    ],
+],
+```
+
+Blok yang sama dibaca console dari `config/cli_anything.php`, sehingga aturan
+pencarian chatbot dan terminal tidak berbeda diam-diam.
+
+Bila katalog Anda sangat besar, Anda boleh menambahkan index FULLTEXT pada
+`biblio.title`; chatbot akan memakainya secara otomatis (dan tetap memakai
+pencarian biasa bila index tidak ada). Perintah di bawah **tidak** dijalankan
+oleh plugin — ini keputusan Anda sebagai pengelola basis data:
+
+```sql
+ALTER TABLE biblio ADD FULLTEXT INDEX ft_biblio_title (title);
+```
+
 ### Transaksi selalu dua langkah
 
 Asisten tidak pernah langsung menulis. Permintaan transaksi dijawab dengan

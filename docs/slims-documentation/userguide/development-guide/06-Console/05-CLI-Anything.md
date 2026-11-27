@@ -90,7 +90,7 @@ Plugin mendaftarkan rute lewat hook `custom_api_route` yang sudah dipakai berkas
 | Metode | Path | Menulis | Keterangan |
 |---|---|---|---|
 | GET | `/status` | tidak | diagnostik: gerbang, jumlah record, pemeriksaan |
-| GET | `/biblio?q=&limit=&offset=&sort=` | tidak | pencarian katalog bertingkat (persis → kata dipendekkan → "mungkin maksud Anda"), diurutkan relevansi/kepopuleran |
+| GET | `/biblio?q=&limit=&offset=&sort=` | tidak | pencarian katalog bertingkat (persis → kata dipendekkan → "mungkin maksud Anda"), bobot dan urutan dari blok `search` di `config/cli_anything.php` |
 | GET | `/biblio/{id}` | tidak | metadata + pengarang + subjek + daftar eksemplar |
 | GET | `/item/{item_code}` | tidak | satu eksemplar (barkode) + status pinjamnya |
 | GET | `/member/{id}` | tidak | kartu anggota + ringkasan pinjaman (PII disamarkan) |

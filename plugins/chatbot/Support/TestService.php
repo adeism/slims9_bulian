@@ -58,9 +58,9 @@ final class TestService
     /**
      * @return array
      */
-    public function biblioList(string $q = '', int $limit = 20, int $offset = 0, string $sort = 'relevance', bool $includeHidden = false): array
+    public function biblioList(string $q = '', int $limit = 20, int $offset = 0, string $sort = 'relevance', bool $includeHidden = false, array $options = []): array
     {
-        $this->calls[] = ['biblio.list', [$q, $limit, $offset, $sort, $includeHidden]];
+        $this->calls[] = ['biblio.list', [$q, $limit, $offset, $sort, $includeHidden, $options]];
 
         if (trim($q) === 'zzz') {
             return [
