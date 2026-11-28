@@ -17,6 +17,7 @@ Command Sendiri) dan modul panduan pengguna.
 | `userguide/user-guide/Modules/7-CLI-Anything/01_chatbot.md` | `userguide/user-guide/Modules/7-CLI-Anything/01_chatbot.md` | pustakawan, staf sirkulasi |
 | `userguide/user-guide/Modules/7-CLI-Anything/02_faq.md` | `userguide/user-guide/Modules/7-CLI-Anything/02_faq.md` | pustakawan yang mengisi FAQ |
 | `userguide/user-guide/Modules/7-CLI-Anything/03_quality.md` | `userguide/user-guide/Modules/7-CLI-Anything/03_quality.md` | pustakawan yang meninjau riwayat dan memperbaiki jawaban |
+| `userguide/user-guide/Modules/7-CLI-Anything/04_llm.md` | `userguide/user-guide/Modules/7-CLI-Anything/04_llm.md` | administrator yang menghubungkan model lokal/API |
 
 Penomoran `05-` pada folder Console melanjutkan urutan `01-Intro`, `02-cara-penggunaan`,
 `03-Tarsius`, `04-Membuat Command Sendiri`. Penomoran modul `7_CLI-Anything` adalah

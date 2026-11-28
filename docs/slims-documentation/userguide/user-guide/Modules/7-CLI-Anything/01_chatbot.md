@@ -461,6 +461,7 @@ Yang perlu dipahami:
 | Perbaikan tidak bisa disimpan | `files/chatbot` tidak bisa ditulis PHP | beri izin tulis, atau set `faq.overlay_file` |
 | `chatbot:selftest` menyebut "repaired at load" | ada nilai salah ketik di `config/chatbot.php` | betulkan nilainya; chat tetap jalan dengan nilai aman |
 | Integrasi WhatsApp menerima 413 | badan permintaan lebih dari 256 KB | kirim hanya pesan yang relevan, bukan riwayat percakapan |
+| Uji koneksi model gagal | URL dasar, kunci, atau izin host | lihat [04_llm.md](04_llm.md) untuk arti tiap kode |
 | Webhook menjawab `404 CHATBOT_DISABLED` | `channel.enabled` mati atau `token` kosong | isi keduanya, lalu simpan ulang |
 | Webhook menjawab `401 UNAUTHORIZED` | header token salah atau gateway tidak mengirimnya | samakan dengan `channel.token` |
 | Balasan selalu "masuk ke area anggota" | nomor/chat id belum terdaftar | tambahkan ke `channel.members` atau `channel.staff` |

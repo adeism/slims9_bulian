@@ -50,6 +50,7 @@ final class Config
             'admin_history' => true,   // System -> Chatbot: history
             'admin_overlay' => true,   // System -> Chatbot: review (fix answers)
             'admin_rules' => true,     // System -> Chatbot: rules (block lists)
+            'admin_llm' => true,       // System -> Chatbot: LLM connection
 
             // Never expose unmasked patron PII through the chat.
             'allow_pii_reveal' => false,
@@ -155,6 +156,32 @@ final class Config
                 'log_hits' => true,
             ],
 
+            // Connection to a local model or an OpenAI-compatible API
+            // (Ollama /v1, LM Studio, llama.cpp, vLLM, LocalAI, OpenAI).
+            // Off by default: the engine answers deterministically and no
+            // request leaves the server until this is switched on. The staff
+            // page System -> Chatbot LLM writes files/chatbot/llm.php, which
+            // is merged over this block. See docs/plans/chatbot-llm-plan.md.
+            'llm' => [
+                'enabled' => false,
+                // Display label only; every provider below speaks the same API.
+                'provider' => 'openai',
+                // Root of the API, without /chat/completions.
+                'base_url' => 'http://127.0.0.1:11434/v1',
+                'model' => '',
+                // Optional for a local server, required by hosted APIs.
+                'api_key' => '',
+                'timeout' => 15,
+                'max_tokens' => 256,
+                'temperature' => 0.2,
+                'verify_tls' => true,
+                // A host outside the local network needs an explicit yes.
+                'allow_remote' => false,
+                'max_calls_per_minute' => 6,
+                // Empty = files/chatbot/llm.php.
+                'file' => '',
+            ],
+
             // Messaging channel webhook (WhatsApp Cloud, Telegram, or a
             // gateway that posts {phone, message}). Off by default; see
             // plugins/chatbot/README.md#messaging-channels.
@@ -226,8 +253,8 @@ final class Config
 
         foreach ([
             'enabled', 'opac', 'admin', 'allow_admin_write', 'allow_member_write',
-            'admin_history', 'admin_overlay', 'admin_rules', 'allow_pii_reveal',
-            'log_queries',
+            'admin_history', 'admin_overlay', 'admin_rules', 'admin_llm',
+            'allow_pii_reveal', 'log_queries',
         ] as $key) {
             $values[$key] = self::flag($values, $key, (bool)($defaults[$key] ?? false));
         }
@@ -263,6 +290,13 @@ final class Config
         $log['max_files'] = self::intIn($log['max_files'] ?? 6, 1, 100, 6, 'log.max_files');
         $log['truncate'] = self::intIn($log['truncate'] ?? 300, 40, 2000, 300, 'log.truncate');
         $values['log'] = $log;
+
+        // ---- llm ---------------------------------------------------------
+        $llm = self::section($values, 'llm', $defaults['llm']);
+        $llm['enabled'] = self::flag($llm, 'enabled', false, 'llm.enabled');
+        $llm['verify_tls'] = self::flag($llm, 'verify_tls', true, 'llm.verify_tls');
+        $llm['allow_remote'] = self::flag($llm, 'allow_remote', false, 'llm.allow_remote');
+        $values['llm'] = $llm;
 
         // ---- guard -------------------------------------------------------
         $guard = self::section($values, 'guard', $defaults['guard']);

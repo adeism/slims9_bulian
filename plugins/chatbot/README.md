@@ -443,6 +443,8 @@ bot:   Rencana saja, belum ada yang ditulis
 | `admin_history` | `true` | System -> Chatbot history page |
 | `admin_overlay` | `true` | System -> Chatbot review page (corrections) |
 | `admin_rules` | `true` | System -> Chatbot rules page |
+| `admin_llm` | `true` | System -> Chatbot LLM page (connection settings) |
+| `llm` | off | local model / OpenAI-compatible API, see [Local models](#local-models-and-openai-compatible-apis) |
 | `channel` | off | WhatsApp/Telegram webhook, see [Messaging channels](#messaging-channels) |
 
 Turning a gate on still requires `allow_write` in `config/cli_anything.php`;
@@ -529,6 +531,60 @@ The page shows how many of the library's own FAQ questions each rule would also
 block: a rule that hits normal questions is visibly too broad. Everything is
 empty and inert by default (`guard.enabled` is false), so upgrading changes
 nothing until an administrator adds a rule and turns the guard on.
+
+## Local models and OpenAI-compatible APIs
+
+Optional, and off by default. The chat keeps answering from intents, FAQ and
+the catalogue service; this block only stores *how* to reach a model you
+choose, and the model is not wired into answering yet (that is phase 2 of
+`docs/plans/chatbot-llm-plan.md`).
+
+One shape covers Ollama (`/v1`), LM Studio, llama.cpp server, vLLM, LocalAI,
+OpenRouter and OpenAI: `POST {base_url}/chat/completions` and
+`GET {base_url}/models`.
+
+Configure it at **System -> Chatbot LLM**, or in `config/chatbot.php`, or from
+the shell:
+
+```bash
+php index.php chatbot:llm            # what is configured (key masked)
+php index.php chatbot:llm --test     # GET /models, latency, model list
+php index.php chatbot:llm --models   # same, plus every model id
+php index.php chatbot:llm --test --json
+```
+
+Exit codes: `0` reachable, `1` the test failed, `2` not configured (off, or no
+model). The staff page writes `files/chatbot/llm.php` (0600, PHP guard,
+outside git) so the config file stays in version control without a secret;
+`config['llm']['file']` overrides that path.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `false` | master switch; off = no request at all |
+| `provider` | `openai` | display label only |
+| `base_url` | `http://127.0.0.1:11434/v1` | API root, no `/chat/completions` |
+| `model` | `''` | e.g. `llama3.1:8b` |
+| `api_key` | `''` | optional locally; stored 0600, shown as `••••abcd` |
+| `timeout` | `15` | 3-120 seconds |
+| `max_tokens` | `256` | 16-4096 |
+| `temperature` | `0.2` | 0-2 |
+| `verify_tls` | `true` | keep it on for anything leaving the machine |
+| `allow_remote` | `false` | a host outside the local network needs an explicit yes |
+| `max_calls_per_minute` | `6` | per-session budget for phase 2 |
+
+What the client refuses, by design:
+
+* schemes other than `http`/`https`, URLs with credentials, query or fragment;
+* cloud metadata addresses (`169.254.169.254`, `metadata.google.internal`) even
+  with `allow_remote`;
+* redirects (`follow_location` off) and replies above 256 KB;
+* more than 8 messages, unknown roles, and messages longer than 4000 characters.
+
+Failures are codes, not exceptions: `DISABLED`, `NOT_CONFIGURED`,
+`REMOTE_BLOCKED`, `UNAUTHORISED`, `RATE_LIMITED`, `SERVER_ERROR`,
+`BAD_RESPONSE`, `EMPTY_CHOICE`, `RESPONSE_TOO_LARGE`, `TIMEOUT`,
+`CONNECTION_FAILED`. Provider text is trimmed to 200 characters and the API key
+is scrubbed out of it before it reaches a page or a log.
 
 ## Measurement
 
@@ -807,18 +863,20 @@ plugins/chatbot/
 │   ├── LogStore.php            NDJSON conversation log (rotate, prune, hash)
 │   ├── History.php             filters, paging, CSV, summary for staff
 │   ├── Evaluation.php          corpus accuracy, sweep, typo fuzz, parity
+│   ├── Llm.php                 local/OpenAI-compatible client + settings
 │   ├── Admin.php               which staff surface is open to whom
 │   ├── TestService.php         fake CLI-Anything for offline tests
 │   ├── vendor/
 │   │   ├── CliAnything.php     copy of the service, stock-install fallback
 │   │   └── README.md           why it exists and how to re-sync it
-│   └── SelfTest.php            180 assertions
+│   └── SelfTest.php            196 assertions
 ├── pages/
 │   ├── opac.php                ?p=chatbot (guest + member)
 │   ├── admin.php               System -> Chatbot (staff)
 │   ├── history.php             System -> Chatbot history (read-only log)
 │   ├── review.php              System -> Chatbot review (corrections)
-│   └── rules.php               System -> Chatbot rules (block lists)
+│   ├── rules.php               System -> Chatbot rules (block lists)
+│   └── llm.php                 System -> Chatbot LLM (connection settings)
 ├── assets/
 │   ├── chatbot.css
 │   └── chatbot.js
@@ -851,7 +909,9 @@ quoting, escaping, permission gate), the overlay (drafts, activation, hidden
 entries, refused input, audit, revert, preview), the guard (bypass variants,
 invalid rules, answer screening, over-blocking), the evaluation targets
 (corpus accuracy, threshold plateau, typo tolerance, language parity, render
-contract) and the escaping of the rendered shell.
+contract), the model connection (settings repair, key masking, endpoint
+joining, request shape, address policy, every failure code, atomic save with
+audit) and the escaping of the rendered shell.
 
 ## Troubleshooting
 

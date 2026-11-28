@@ -153,6 +153,41 @@ return [
     'admin_history' => true,
     'admin_overlay' => true,
     'admin_rules' => true,
+    'admin_llm' => true,       // System -> Chatbot LLM: connection settings
+
+    /*
+     |--------------------------------------------------------------------------
+     | Local model / OpenAI-compatible API (optional)
+     |--------------------------------------------------------------------------
+     |
+     | Off by default: the chat answers from intents, FAQ and the catalogue
+     | service, and no request leaves the server until this is switched on.
+     | Everything below speaks the same API (POST {base_url}/chat/completions,
+     | GET {base_url}/models): Ollama (`/v1`), LM Studio, llama.cpp server,
+     | vLLM, LocalAI, OpenRouter, OpenAI.
+     |
+     | The staff page System -> Chatbot LLM writes the same keys to
+     | files/chatbot/llm.php (0600, outside git), which is merged over this
+     | block. Leave `file` empty to use that path.
+     |
+     | `allow_remote` must be true for any host that is not on the local
+     | network; cloud metadata addresses are always refused. Keep `verify_tls`
+     | on for anything that leaves the machine.
+     */
+    'llm' => [
+        'enabled' => false,
+        'provider' => 'openai',                              // label only
+        'base_url' => 'http://127.0.0.1:11434/v1',           // Ollama default
+        'model' => '',                                       // e.g. llama3.1:8b
+        'api_key' => '',                                     // optional locally
+        'timeout' => 15,                                     // seconds, 3-120
+        'max_tokens' => 256,                                 // 16-4096
+        'temperature' => 0.2,                                // 0-2
+        'verify_tls' => true,
+        'allow_remote' => false,
+        'max_calls_per_minute' => 6,
+        'file' => '',                                        // empty = files/chatbot/llm.php
+    ],
 
     /*
      |--------------------------------------------------------------------------

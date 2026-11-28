@@ -72,6 +72,15 @@ if (!empty($chatbotConfig['admin']) && !empty($chatbotConfig['admin_rules'])) {
 }
 
 /*
+ * Staff LLM connection: `System -> Chatbot LLM`.
+ * Settings only — the deterministic engine keeps answering unless an
+ * administrator turns the model on. See docs/plans/chatbot-llm-plan.md.
+ */
+if (!empty($chatbotConfig['admin']) && !empty($chatbotConfig['admin_llm'])) {
+    $plugin->registerMenu('system', 'Chatbot LLM', __DIR__ . '/pages/llm.php');
+}
+
+/*
  * Messaging channel webhook: WhatsApp Cloud, Telegram, or a local gateway
  * posting {phone, message}. Inert unless it is enabled *and* a token is set,
  * exactly like the CLI-Anything HTTP bridge.
