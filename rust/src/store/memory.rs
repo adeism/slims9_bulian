@@ -18,6 +18,7 @@ use crate::models::*;
 pub struct MemoryStore {
     biblio: Vec<Biblio>,
     content: Vec<PublicContent>,
+    librarians: Vec<(i64, PublicLibrarian)>,
     loans: Vec<Loan>,
     members: Vec<Member>,
     member_profiles: HashMap<String, MemberProfile>,
@@ -49,6 +50,16 @@ impl MemoryStore {
     }
 
     fn build(&mut self, data: &SeedData, demo_circulation: bool) {
+        if let Some(table) = data.table("user") {
+            for row in &table.rows {
+                let Some(role) = cell_i64(table, row, "user_type").and_then(LibrarianRole::from_user_type) else { continue; };
+                self.librarians.push((cell_i64(table, row, "user_id").unwrap_or(0), PublicLibrarian {
+                    name: cell_string(table, row, "realname").unwrap_or_default(),
+                    email: cell_string(table, row, "email"),
+                    image: cell_string(table, row, "user_image"), role,
+                }));
+            }
+        }
         if let Some(table) = data.table("content") {
             for row in &table.rows {
                 let path = cell_string(table, row, "content_path").unwrap_or_default();
@@ -630,6 +641,12 @@ fn year_of(value: Option<&str>) -> i32 {
 }
 
 impl Store for MemoryStore {
+    fn public_librarians(&self) -> StoreResult<Vec<PublicLibrarian>> {
+        let mut rows: Vec<_> = self.librarians.iter().collect();
+        rows.sort_by(|(a_id, a), (b_id, b)| b.role.user_type().cmp(&a.role.user_type()).then(a_id.cmp(b_id)));
+        Ok(rows.into_iter().take(20).map(|(_, profile)| profile.clone()).collect())
+    }
+
     fn public_news(&self, keywords: &str, offset: usize) -> StoreResult<Vec<PublicContent>> {
         crate::content::validate_news(keywords, offset)?;
         let needle = keywords.to_lowercase();

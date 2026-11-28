@@ -13,6 +13,7 @@ pub fn handle(request: &Request, state: &AppState) -> Response {
     match path {
         "/" => home(request, state),
         "/search" => search(request, state, false),
+        "/librarians" => crate::librarians::handle(request, state),
         "/news" => crate::content::handle(request, state, None),
         "/member" => member(state),
         "/index.php" => legacy(request, state),
@@ -330,6 +331,7 @@ fn member(state: &AppState) -> Response {
 
 fn legacy(request: &Request, state: &AppState) -> Response {
     match request.query_or("p", "") {
+        "librarian" => crate::librarians::handle(request, state),
         "news" => crate::content::handle(request, state, None),
         "headerinfo" => Response::redirect("/"),
         "show_detail" => detail(request, state, request.query_or("id", "")),

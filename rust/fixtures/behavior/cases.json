@@ -456,6 +456,50 @@
           "Read-only content"
         ]
       }
+    },
+    {
+      "name": "opac-librarians",
+      "method": "GET",
+      "path": "/librarians",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "Profile of our Librarian"
+        ]
+      }
+    },
+    {
+      "name": "opac-legacy-librarians",
+      "method": "GET",
+      "path": "/index.php?p=librarian",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "Profile of our Librarian"
+        ]
+      }
+    },
+    {
+      "name": "opac-librarians-role-override-refused",
+      "method": "GET",
+      "path": "/librarians?user_type=3",
+      "expect": {
+        "status": 400,
+        "contains": [
+          "Invalid directory query"
+        ]
+      }
+    },
+    {
+      "name": "opac-librarians-post-refused",
+      "method": "POST",
+      "path": "/index.php?p=librarian",
+      "expect": {
+        "status": 405,
+        "contains": [
+          "Read-only librarian directory"
+        ]
+      }
     }
   ]
 }

@@ -25,3 +25,17 @@ fn published_content_scope_literal_search_and_pagination_through_mysql() {
     assert!(store.public_content("FIXTURE-1").unwrap().is_none());
     assert!(store.public_news("", 100_001).is_err());
 }
+
+#[test]
+#[ignore = "requires fresh disposable setup_member_mysql_test.py librarian fixture"]
+fn public_librarian_projection_through_mysql() {
+    let raw = std::env::var("SLIMS_TEST_MYSQL_URL").expect("disposable fixture URL");
+    let store = MySqlStore::new(MySqlUrl::parse(&raw).unwrap());
+    let rows = store.public_librarians().unwrap();
+    assert_eq!(rows.len(), 20);
+    assert_eq!(rows[0].name, "Fixture staff 1");
+    assert_eq!(rows[1].name, "Fixture staff 2");
+    assert!(rows.iter().all(|r| matches!(r.role.user_type(), 1 | 2)));
+    assert!(rows.iter().all(|r| !["Fixture staff 23", "Fixture staff 24", "Fixture staff 25"].contains(&r.name.as_str())));
+    assert!(rows[0].email.as_deref().unwrap().ends_with("@example.invalid"));
+}

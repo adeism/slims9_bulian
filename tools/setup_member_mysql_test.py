@@ -54,6 +54,12 @@ def main():
                 if statement.strip().lower().startswith(("create table", "insert")):
                     cur.execute(statement)
                     count += 1
+        # Directory fixture: only user types 1/2 are public, no auth is exercised.
+        for number in range(1, 26):
+            role = 2 if number <= 2 else (1 if number <= 22 else 3)
+            cur.execute("INSERT INTO user (username,realname,passwd,email,user_type,user_image,social_media) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (f"fixture_staff_{number}", f"Fixture staff {number}", "DIRECTORY_PRIVATE_HASH",
+                         f"staff{number}@example.invalid", role, "../private.svg", "DIRECTORY_PRIVATE_SOCIAL"))
         # Public-content fixture: drafts/private paths sort ahead of all visible rows.
         for number in range(1, 14):
             cur.execute("INSERT INTO content (content_title,content_desc,content_path,is_news,is_draft,input_date,last_update) VALUES (%s,%s,%s,1,0,'2026-01-01','2026-01-01')",

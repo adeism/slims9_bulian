@@ -603,3 +603,15 @@ crypt juga lulus termasuk kasus batas ukuran terakhir. Sebelas tes
 safety Python lulus. Fixture/tes MySQL tersedia dan masuk runner fresh-read,
 tetapi belum dieksekusi pada MySQL sungguhan. Bukan paritas penuh PHP/CMS dan
 bukan persetujuan produksi. Lihat docs/opac-content.md untuk rincian.
+
+### ADR-0051 — rewrite profil pustakawan publik
+
+Rust menangani `/librarians` serta alias `?p=librarian`, hanya user_type1/2 dan
+maksimal20 profil, filter sebelum batas. SQL/model hanya membawa nama, email,
+foto dan tipe publik, bukan username/password/2FA/token/IP/grup. Output di-escape,
+foto dibatasi basename raster lokal; social_media PHP tidak di-unserialize.
+
+Default82/crypt98/SQLite108 tes library plus gate,6 konten,6 direktori,2 startup
+lulus; crypt25/SQLite28 member flow lulus. Python11 safety dan HTTP gate31/31
+relevan lulus. Fixture/tes MySQL baru dikompilasi, belum dijalankan pada MySQL
+sungguhan. Tidak ada migrasi schema, writer produksi, aktivasi CI atau merge.

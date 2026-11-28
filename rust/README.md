@@ -416,3 +416,13 @@ unknown tags escaped. This is not PHP rich-HTML/language/plugin parity or CMS
 editing. Unknown legacy page selectors now return a content page/404 instead of
 silently showing the catalog home. See [OPAC content port](../docs/opac-content.md)
 for routes, limits, status codes, tests and unvalidated MySQL acceptance.
+
+### Public librarian directory
+
+`/librarians` and `/index.php?p=librarian` show at most 20 public staff profiles,
+matching PHP's user types 1/2. Only name/email/image/public type are selected;
+credentials and private account metadata are not part of this model. Names and
+emails are escaped, portraits are restricted to local raster basenames. Social
+media serialization, staff login/editing and custom role/i18n output are not
+ported. Review type assignment and public-email consent before deployment.
+See [directory port and evidence](../docs/opac-librarians.md).

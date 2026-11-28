@@ -16,6 +16,7 @@ pub mod api;
 pub mod app;
 pub mod config;
 pub mod content;
+pub mod librarians;
 pub mod crypto;
 pub mod date;
 pub mod http;

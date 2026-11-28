@@ -16,6 +16,7 @@ States: **ported** · **partial** · **planned** · **kept in PHP** (until cutov
 | `lib/contents/member.inc.php` | `src/member.rs`, `src/member_limit.rs` | partial | experimental member flow; session basket, paginated loans/bookmarks, test-only writes and reservation prototype; not production-ready |
 | `lib/contents/download_member_loan_report.inc.php` | `src/member_report.rs`, `Store::member_loan_report` | partial | authenticated combined printable HTML + CSV; 1000-loan/size ceiling; new UI, not byte parity |
 | `lib/contents/download_current_loan.inc.php`, `download_loan_history.inc.php` | `src/member_report.rs`, scoped Store read | partial | authenticated GET/HEAD HTML attachments + CSV; scope-before-limit; not PHP markup parity |
+| `lib/contents/librarian.inc.php` | `src/librarians.rs`, Store public librarian projection | partial | public types1/2, capped read-only directory; no social-media/i18n/admin editing parity |
 | `lib/contents/login.inc.php` | — | planned | librarian login not ported |
 | `lib/contents/news.inc.php`, `headerinfo.inc.php` | `src/content.rs` | partial | news GET/HEAD + legacy alias; headerinfo redirects home, block not ported |
 | `template/default/**` | `src/templates.rs`, `static/opac.css` | ported (new UI) | ADR-0007 |

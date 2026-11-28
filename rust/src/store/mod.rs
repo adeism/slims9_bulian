@@ -35,6 +35,11 @@ impl std::error::Error for StoreError {}
 pub type StoreResult<T> = Result<T, StoreError>;
 
 pub trait Store: Send + Sync {
+    /// Same public user types as PHP, at most 20, never credential fields.
+    fn public_librarians(&self) -> StoreResult<Vec<PublicLibrarian>> {
+        Err(StoreError::Db("public librarian directory unavailable".into()))
+    }
+
     /// Published public rows only, 11-row sentinel for a 10-row page.
     fn public_news(&self, _keywords: &str, _offset: usize) -> StoreResult<Vec<PublicContent>> {
         Err(StoreError::Db("public content unavailable".into()))

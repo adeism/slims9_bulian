@@ -94,7 +94,7 @@ pub fn layout(config: &Config, title: &str, active: &str, content: &str) -> Stri
          <link rel=\"stylesheet\" href=\"/static/opac.css\">\n\
          <link rel=\"icon\" href=\"/favicon.ico\">\n\
          </head>\n<body>\n\
-         <header class=\"site-header\">\n  <div class=\"wrap header-inner\">\n    <a class=\"brand\" href=\"/\">\n      <span class=\"brand-mark\">SL</span>\n      <span class=\"brand-text\"><strong>{library}</strong><small>{subname}</small></span>\n    </a>\n    <nav class=\"nav\">\n      {nav_home}\n      {nav_search}\n      {nav_news}\n      {nav_member}\n    </nav>\n  </div>\n</header>\n\
+         <header class=\"site-header\">\n  <div class=\"wrap header-inner\">\n    <a class=\"brand\" href=\"/\">\n      <span class=\"brand-mark\">SL</span>\n      <span class=\"brand-text\"><strong>{library}</strong><small>{subname}</small></span>\n    </a>\n    <nav class=\"nav\">\n      {nav_home}\n      {nav_search}\n      {nav_news}\n      {nav_librarians}\n      {nav_member}\n    </nav>\n  </div>\n</header>\n\
          <main class=\"wrap main\">\n{content}\n</main>\n\
          <footer class=\"site-footer\">\n  <div class=\"wrap footer-inner\">\n    <p><strong>{library}</strong> · {subname}</p>\n    <p class=\"muted\">Powered by <code>slims9-rs</code>, a Rust rewrite of SLiMS 9 Bulian. OPAC and REST API v1 are running from Rust; the original PHP application stays untouched beside it.</p>\n  </div>\n</footer>\n</body>\n</html>\n",
         title = escape(title),
@@ -104,6 +104,7 @@ pub fn layout(config: &Config, title: &str, active: &str, content: &str) -> Stri
         nav_home = nav("/", "Home", "home"),
         nav_search = nav("/search", "Catalog", "search"),
         nav_news = nav("/news", "News", "news"),
+        nav_librarians = nav("/librarians", "Librarians", "librarians"),
         nav_member = nav("/member", "Member area", "member"),
     )
 }

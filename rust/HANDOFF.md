@@ -597,3 +597,19 @@ stage, not executed locally. CI inactive; production blockers unchanged.
 
 Live memory HTTP behavior gate also passed 27/27 applicable cases (one MySQL-only
 case skipped), including the four new content cases. This is not live PHP parity.
+
+### Public librarian directory (ADR-0051)
+
+`src/librarians.rs`: `/librarians`, legacy `?p=librarian`, nav link. Store exposes
+public types1/2 only, before20 cap, stable ordering. Public model/SQL projection
+omit credentials, tokens, login names/IPs, groups/social serialization. Escaped
+text and constrained local raster portraits; no social/provider/admin parity.
+400 selectors,405 writes,413 bounds,503 redacted errors. No schema/runtime writes.
+
+Default82/crypt98/SQLite108 library tests plus behavior,6 content,6 directory,
+2 startup all pass; crypt25 and SQLite28 member flows pass. Python11 safety,
+fixture py_compile and live memory HTTP gate31/31 applicable (1skip) pass. New
+SQL fixture/test in content_mysql is compiled but unexecuted on real DB. Full
+limitations and public-email/type assignment review in docs/opac-librarians.md.
+Preview restarted with current default memory binary on8080; stock seed has no
+public staff, so empty directory is expected. CI template remains inactive.

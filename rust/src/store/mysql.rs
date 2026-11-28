@@ -973,7 +973,19 @@ impl MySqlStore {
 
 }
 
+// Deliberate public-field projection: never SELECT * from user.
+const PUBLIC_LIBRARIANS_SQL: &str = "SELECT realname,email,user_image,user_type FROM user WHERE user_type IN (1,2) ORDER BY user_type DESC,user_id ASC LIMIT 20";
+
 impl Store for MySqlStore {
+    fn public_librarians(&self) -> StoreResult<Vec<PublicLibrarian>> {
+        self.run(PUBLIC_LIBRARIANS_SQL, |rs| (0..rs.rows.len()).map(|i| {
+            let role = rs.i64(i, "user_type").and_then(LibrarianRole::from_user_type)
+                .ok_or_else(|| StoreError::Db("invalid public librarian type".into()))?;
+            Ok(PublicLibrarian { name: rs.string(i, "realname").unwrap_or_default(),
+                email: rs.string(i, "email"), image: rs.string(i, "user_image"), role })
+        }).collect())
+    }
+
     fn public_news(&self, keywords: &str, offset: usize) -> StoreResult<Vec<PublicContent>> {
         let sql = public_news_sql(keywords, offset)?;
         self.run(&sql, |rs| Ok((0..rs.rows.len()).map(|i| public_content_row(rs, i))
@@ -2071,5 +2083,19 @@ mod public_content_tests {
         assert!(!public_news_sql("", 0).unwrap().contains("LOCATE"));
         assert!(public_news_sql("", 100_001).is_err());
         assert!(public_news_sql(&"a".repeat(201), 0).is_err());
+    }
+}
+
+#[cfg(test)]
+mod librarian_projection_tests {
+    use super::*;
+    #[test]
+    fn only_public_profile_columns_are_selected_and_filtered_before_limit() {
+        let projection = PUBLIC_LIBRARIANS_SQL.split(" FROM ").next().unwrap();
+        assert_eq!(projection, "SELECT realname,email,user_image,user_type");
+        for private in ["username", "passwd", "2fa", "social_media", "last_login", "forgot", "groups"] {
+            assert!(!projection.contains(private));
+        }
+        assert!(PUBLIC_LIBRARIANS_SQL.ends_with("WHERE user_type IN (1,2) ORDER BY user_type DESC,user_id ASC LIMIT 20"));
     }
 }

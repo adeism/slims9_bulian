@@ -400,3 +400,28 @@ pub struct PublicContent {
     pub updated: String,
     pub published: Option<String>,
 }
+
+/// Only the two staff types published by the PHP librarian directory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LibrarianRole { Librarian, SeniorLibrarian }
+
+impl LibrarianRole {
+    pub fn from_user_type(value: i64) -> Option<Self> {
+        match value { 1 => Some(Self::Librarian), 2 => Some(Self::SeniorLibrarian), _ => None }
+    }
+    pub fn user_type(self) -> i64 {
+        match self { Self::Librarian => 1, Self::SeniorLibrarian => 2 }
+    }
+    pub fn label(self) -> &'static str {
+        match self { Self::Librarian => "Librarian", Self::SeniorLibrarian => "Senior Librarian" }
+    }
+}
+
+/// Public projection only: never contains login name, hash, 2FA, IP or reset token.
+#[derive(Clone, Debug)]
+pub struct PublicLibrarian {
+    pub name: String,
+    pub email: Option<String>,
+    pub image: Option<String>,
+    pub role: LibrarianRole,
+}

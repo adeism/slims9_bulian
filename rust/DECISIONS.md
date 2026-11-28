@@ -987,3 +987,19 @@ Fix test HTTP client HEAD handling discovered by actual TCP regression tests.
 Add source-derived gate cases, six content tests and opt-in fresh MySQL fixture
 coverage. No schema change or production writer enablement. Real SQL tests are
 compiled only in this increment; full PHP and MySQL acceptance remain pending.
+
+## ADR-0051: public librarian directory without credential projection
+
+Port `/librarians` and legacy `?p=librarian` from the PHP directory. Match its
+public type selection (1/2) and 20-profile cap with a deterministic ID tie-breaker.
+Filter before cap in both stores; use a dedicated model with only public fields
+and a role enum that cannot represent private staff types. MySQL must never use
+SELECT * on user for this feature. No authentication/admin/profile writer added.
+
+Escape metadata and restrict portraits to local raster basenames. Do not parse
+serialized social media or execute raw fields. Reject unsupported selectors and
+non-read methods; failures/bounds are explicit rather than partial/empty success.
+See docs/opac-librarians.md for privacy, compatibility and validation details.
+Six directory tests + three unit tests and four gate cases added. All three
+feature suites, Python safety and live memory gate31/31 passed. New disposable
+SQL integration is compiled only; CI and production blockers unchanged.
