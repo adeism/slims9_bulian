@@ -17,6 +17,7 @@ use crate::models::*;
 #[derive(Clone, Debug, Default)]
 pub struct MemoryStore {
     biblio: Vec<Biblio>,
+    content: Vec<PublicContent>,
     loans: Vec<Loan>,
     members: Vec<Member>,
     member_profiles: HashMap<String, MemberProfile>,
@@ -48,6 +49,22 @@ impl MemoryStore {
     }
 
     fn build(&mut self, data: &SeedData, demo_circulation: bool) {
+        if let Some(table) = data.table("content") {
+            for row in &table.rows {
+                let path = cell_string(table, row, "content_path").unwrap_or_default();
+                // Old installer INSERTs omit is_draft; schema default is zero.
+                if (table.columns.iter().any(|c| c == "is_draft") && cell_i64(table, row, "is_draft") != Some(0))
+                    || !crate::content::public_path(&path) { continue; }
+                self.content.push(PublicContent {
+                    id: cell_i64(table, row, "content_id").unwrap_or(0),
+                    title: cell_string(table, row, "content_title").unwrap_or_default(),
+                    body: cell_string(table, row, "content_desc").unwrap_or_default(),
+                    path, is_news: cell_i64(table, row, "is_news").unwrap_or(0) == 1,
+                    updated: cell_string(table, row, "last_update").unwrap_or_default(),
+                    published: cell_string(table, row, "publish_date"),
+                });
+            }
+        }
         let gmd = string_map(data, "mst_gmd", "gmd_id", "gmd_name");
         let coll_type = string_map(data, "mst_coll_type", "coll_type_id", "coll_type_name");
         let publisher = string_map(data, "mst_publisher", "publisher_id", "publisher_name");
@@ -613,6 +630,20 @@ fn year_of(value: Option<&str>) -> i32 {
 }
 
 impl Store for MemoryStore {
+    fn public_news(&self, keywords: &str, offset: usize) -> StoreResult<Vec<PublicContent>> {
+        crate::content::validate_news(keywords, offset)?;
+        let needle = keywords.to_lowercase();
+        let mut rows: Vec<_> = self.content.iter().filter(|c| c.is_news &&
+            (c.title.to_lowercase().contains(&needle) || c.body.to_lowercase().contains(&needle))).collect();
+        rows.sort_by(|a, b| b.updated.cmp(&a.updated).then(b.id.cmp(&a.id)));
+        Ok(rows.into_iter().skip(offset).take(11).cloned().collect())
+    }
+
+    fn public_content(&self, path: &str) -> StoreResult<Option<PublicContent>> {
+        if !crate::content::public_path(path) { return Ok(None); }
+        Ok(self.content.iter().find(|c| c.path == path).cloned())
+    }
+
     fn member_reservations(&self, member_id: &str) -> StoreResult<Vec<DemoReservation>> {
         Ok(self.stored_reservations.iter().filter(|(_, row)| row.member_id == member_id)
             .take(100).map(|(_, row)| row.clone()).collect())

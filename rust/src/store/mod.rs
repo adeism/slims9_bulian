@@ -35,6 +35,14 @@ impl std::error::Error for StoreError {}
 pub type StoreResult<T> = Result<T, StoreError>;
 
 pub trait Store: Send + Sync {
+    /// Published public rows only, 11-row sentinel for a 10-row page.
+    fn public_news(&self, _keywords: &str, _offset: usize) -> StoreResult<Vec<PublicContent>> {
+        Err(StoreError::Db("public content unavailable".into()))
+    }
+    fn public_content(&self, _path: &str) -> StoreResult<Option<PublicContent>> {
+        Err(StoreError::Db("public content unavailable".into()))
+    }
+
     fn biblio_popular(&self, limit: usize) -> StoreResult<Vec<PopularBiblio>>;
     fn biblio_latest(&self, limit: usize) -> StoreResult<Vec<Biblio>>;
     fn biblio_total(&self) -> StoreResult<i64>;

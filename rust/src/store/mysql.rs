@@ -974,6 +974,19 @@ impl MySqlStore {
 }
 
 impl Store for MySqlStore {
+    fn public_news(&self, keywords: &str, offset: usize) -> StoreResult<Vec<PublicContent>> {
+        let sql = public_news_sql(keywords, offset)?;
+        self.run(&sql, |rs| Ok((0..rs.rows.len()).map(|i| public_content_row(rs, i))
+            .filter(|c| crate::content::public_path(&c.path)).collect()))
+    }
+
+    fn public_content(&self, path: &str) -> StoreResult<Option<PublicContent>> {
+        if !crate::content::public_path(path) { return Ok(None); }
+        let hex = path.as_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let sql = format!("SELECT content_id,content_title,content_desc,content_path,is_news,last_update,publish_date FROM content WHERE is_draft=0 AND BINARY content_path=X'{}' LIMIT 1", hex);
+        self.run(&sql, |rs| Ok(if rs.is_empty() { None } else { Some(public_content_row(rs, 0)) }))
+    }
+
     fn test_reservations(&self, member_id: &str) -> StoreResult<Vec<DemoReservation>> {
         self.member_reservations(member_id)
     }
@@ -2015,5 +2028,48 @@ mod tests {
 
     fn hex(bytes: &[u8]) -> String {
         bytes.iter().map(|b| format!("{:02x}", b)).collect()
+    }
+}
+
+fn public_content_row(rs: &ResultSet, i: usize) -> PublicContent {
+    PublicContent {
+        id: rs.i64(i, "content_id").unwrap_or(0),
+        title: rs.string(i, "content_title").unwrap_or_default(),
+        body: rs.string(i, "content_desc").unwrap_or_default(),
+        path: rs.string(i, "content_path").unwrap_or_default(),
+        is_news: rs.i64(i, "is_news").unwrap_or(0) == 1,
+        updated: rs.string(i, "last_update").unwrap_or_default(),
+        published: rs.string(i, "publish_date"),
+    }
+}
+
+fn public_news_sql(keywords: &str, offset: usize) -> StoreResult<String> {
+    crate::content::validate_news(keywords, offset)?;
+    let hex = keywords.as_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>();
+    // Hex literals do not depend on SQL backslash mode. LOCATE is literal,
+    // deliberately not PHP BOOLEAN FULLTEXT or LIKE wildcard syntax.
+    let filter = if hex.is_empty() { String::new() } else {
+        format!(" AND (LOCATE(CONVERT(X'{}' USING utf8),content_title)>0 OR LOCATE(CONVERT(X'{}' USING utf8),content_desc)>0)", hex, hex)
+    };
+    let sql = format!("SELECT content_id,content_title,content_desc,content_path,is_news,last_update,publish_date FROM content WHERE is_draft=0 AND is_news=1 AND BINARY content_path REGEXP '^[a-z0-9][a-z0-9_-]{{0,19}}$' AND content_path NOT LIKE 'admin%' AND content_path<>'headerinfo'{} ORDER BY last_update DESC,content_id DESC LIMIT 11 OFFSET {}", filter, offset);
+    Ok(sql)
+}
+
+#[cfg(test)]
+mod public_content_tests {
+    use super::*;
+    #[test]
+    fn content_sql_is_published_scoped_literal_and_bounded() {
+        let sql = public_news_sql("' OR 1=1 --%\\", 10).unwrap();
+        assert!(sql.contains("WHERE is_draft=0 AND is_news=1"));
+        assert!(sql.contains("BINARY content_path REGEXP"));
+        assert!(sql.contains("content_path NOT LIKE 'admin%'"));
+        assert!(sql.contains("content_path<>'headerinfo'"));
+        assert!(sql.contains("LOCATE(CONVERT(X'"));
+        assert!(!sql.contains("OR 1=1"));
+        assert!(sql.ends_with("ORDER BY last_update DESC,content_id DESC LIMIT 11 OFFSET 10"));
+        assert!(!public_news_sql("", 0).unwrap().contains("LOCATE"));
+        assert!(public_news_sql("", 100_001).is_err());
+        assert!(public_news_sql(&"a".repeat(201), 0).is_err());
     }
 }

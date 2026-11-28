@@ -591,3 +591,15 @@ revisi berbeda, tree kotor, laporan kedaluwarsa dan klaim cakupan yang tidak
 didukung. Sebelas tes safety lulus. Ini pemeriksaan konsistensi, bukan tanda
 tangan atau persetujuan produksi. Template CI tetap nonaktif; MySQL/Rust/PHP
 belum diuji ulang pada tahap ini. Tidak ada perubahan schema/writer produksi.
+
+### ADR-0050 — rewrite berita dan konten publik SLiMS
+
+Port Rust untuk `/news`, `/pages/{path}` dan alias `index.php?p=...`, membaca
+tabel content yang sama tanpa migrasi schema. Draft/admin tidak ditampilkan,
+filter sebelum pagination, pencarian literal, batas input/output dan renderer
+formatting ketat mencegah HTML tersimpan dieksekusi. Nav News ditambahkan.
+Enam tes konten dan empat kasus behavior gate ditambahkan; default/SQLite lulus,
+crypt juga lulus termasuk kasus batas ukuran terakhir. Sebelas tes
+safety Python lulus. Fixture/tes MySQL tersedia dan masuk runner fresh-read,
+tetapi belum dieksekusi pada MySQL sungguhan. Bukan paritas penuh PHP/CMS dan
+bukan persetujuan produksi. Lihat docs/opac-content.md untuk rincian.

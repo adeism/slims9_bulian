@@ -578,3 +578,22 @@ outside the tree and run from clean commits. Consistency only, not signed
 attestation or production approval. Eleven runner/evidence safety tests passed;
 no new Rust/MySQL/PHP/HTTP execution in this restored sandbox. CI permissions,
 real SQL scope execution and all production blockers remain unresolved.
+
+### Read-only OPAC content (ADR-0050)
+
+`src/content.rs` handles `/news`, `/pages/{path}` and legacy `p=news|{path}`.
+Store reads existing published content only; no writes/schema changes. Admin*
+/headerinfo/drafts are excluded before the sentinel; stable pagination, literal
+search, 400/404/405/413/503 and restrictive stored-format renderer. Unknown
+nonempty legacy p no longer falls back to home. Exact compatibility/security
+bounds in docs/opac-content.md. Nav includes News. Headerinfo redirects home.
+
+Default 79 library + behavior + 6 content + 2 startup; SQLite 105 library +
+behavior + 6 content + 28 member + 2 startup pass. Crypt 95 + behavior + 6 content
++ 25 member + 2 startup passed. Eleven Python
+safety tests pass. Rust temporarily restored outside Git (1.92 nightly). New
+content_mysql fixture tests compiled only; runner includes them in fresh-read
+stage, not executed locally. CI inactive; production blockers unchanged.
+
+Live memory HTTP behavior gate also passed 27/27 applicable cases (one MySQL-only
+case skipped), including the four new content cases. This is not live PHP parity.

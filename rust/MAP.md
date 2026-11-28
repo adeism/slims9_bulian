@@ -9,7 +9,7 @@ States: **ported** · **partial** · **planned** · **kept in PHP** (until cutov
 | --- | --- | --- | --- |
 | `index.php` | `src/app.rs`, `src/opac.rs` | ported | request lifecycle, legacy query dispatch |
 | `lib/Opac.php` | `src/opac.rs` | partial | path handling and pages; plugin hooks not ported |
-| `lib/content.inc.php` | `src/opac.rs` | partial | news/content pages not ported |
+| `lib/content.inc.php` | `src/content.rs`, Store public content reads | partial | published news/content reads, restricted formatting; no language/plugin/CMS parity |
 | `lib/biblio_list.inc.php` | `store::search`, `store::mysql.rs` | ported | LIKE instead of FULLTEXT (ADR-0005) |
 | `lib/biblio_list_model.inc.php` | `src/models.rs::SearchQuery` | ported | field list and pagination |
 | `lib/contents/show_detail.inc.php` | `src/opac.rs::detail` | ported | metadata, copies, subjects; comments not ported |
@@ -17,7 +17,7 @@ States: **ported** · **partial** · **planned** · **kept in PHP** (until cutov
 | `lib/contents/download_member_loan_report.inc.php` | `src/member_report.rs`, `Store::member_loan_report` | partial | authenticated combined printable HTML + CSV; 1000-loan/size ceiling; new UI, not byte parity |
 | `lib/contents/download_current_loan.inc.php`, `download_loan_history.inc.php` | `src/member_report.rs`, scoped Store read | partial | authenticated GET/HEAD HTML attachments + CSV; scope-before-limit; not PHP markup parity |
 | `lib/contents/login.inc.php` | — | planned | librarian login not ported |
-| `lib/contents/news.inc.php`, `headerinfo.inc.php` | — | planned | Phase 2 |
+| `lib/contents/news.inc.php`, `headerinfo.inc.php` | `src/content.rs` | partial | news GET/HEAD + legacy alias; headerinfo redirects home, block not ported |
 | `template/default/**` | `src/templates.rs`, `static/opac.css` | ported (new UI) | ADR-0007 |
 | `api/v1/routes.php` | `src/api.rs::handle` | ported | 15 routes |
 | `api/v1/controllers/HomeController.php` | `src/api.rs::home` | ported | exact message |

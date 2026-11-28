@@ -567,6 +567,7 @@ pub fn request(url: &str, method: &str, body: Option<&str>) -> std::io::Result<R
         .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))
         .and_then(|(_, v)| v.parse::<usize>().ok());
     match content_length {
+        _ if method.eq_ignore_ascii_case("HEAD") || matches!(status, 204 | 304) => {}
         Some(len) => {
             body_buf = vec![0u8; len];
             reader.read_exact(&mut body_buf)?;

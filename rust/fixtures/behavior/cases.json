@@ -410,6 +410,52 @@
           "library": "SLiMS 9 Bulian"
         }
       }
+    },
+    {
+      "name": "opac-news-readonly",
+      "method": "GET",
+      "path": "/news",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "Library News",
+          "Search news"
+        ]
+      }
+    },
+    {
+      "name": "opac-legacy-content-help",
+      "method": "GET",
+      "path": "/index.php?p=help",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "Help On Usage",
+          "Searching"
+        ]
+      }
+    },
+    {
+      "name": "opac-private-content-refused",
+      "method": "GET",
+      "path": "/pages/adminhome",
+      "expect": {
+        "status": 404,
+        "contains": [
+          "Page not found"
+        ]
+      }
+    },
+    {
+      "name": "opac-news-post-refused",
+      "method": "POST",
+      "path": "/index.php?p=news",
+      "expect": {
+        "status": 405,
+        "contains": [
+          "Read-only content"
+        ]
+      }
     }
   ]
 }

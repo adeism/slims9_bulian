@@ -405,3 +405,14 @@ GitHub App was denied `workflows` permission. An authorized maintainer must inst
 it as `.github/workflows/rust-validation.yml`. No new CI result is available. It uses read-only repository permissions and a
 fixture-only service, never a deployment database. CI results must be checked;
 workflow presence alone is not a passing test result.
+
+### Read-only library news and pages
+
+`/news` (also `/index.php?p=news`) and `/pages/{path}` (also legacy `?p={path}`)
+read published records from the existing `content` table. News supports literal
+`keywords` search and bounded pagination; drafts/admin paths are excluded. Stored
+formatting is deliberately restricted, with all attributes, links, scripts and
+unknown tags escaped. This is not PHP rich-HTML/language/plugin parity or CMS
+editing. Unknown legacy page selectors now return a content page/404 instead of
+silently showing the catalog home. See [OPAC content port](../docs/opac-content.md)
+for routes, limits, status codes, tests and unvalidated MySQL acceptance.

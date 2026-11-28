@@ -54,6 +54,13 @@ def main():
                 if statement.strip().lower().startswith(("create table", "insert")):
                     cur.execute(statement)
                     count += 1
+        # Public-content fixture: drafts/private paths sort ahead of all visible rows.
+        for number in range(1, 14):
+            cur.execute("INSERT INTO content (content_title,content_desc,content_path,is_news,is_draft,input_date,last_update) VALUES (%s,%s,%s,1,0,'2026-01-01','2026-01-01')",
+                        (f"Fixture news {number}", "<p>Library fixture update</p>", f"fixture-{number}"))
+        for path, draft in [("fixture-draft", 1), ("adminfixture", 0), ("bad/path", 0)]:
+            cur.execute("INSERT INTO content (content_title,content_desc,content_path,is_news,is_draft,input_date,last_update) VALUES (%s,%s,%s,1,%s,'2026-02-01','2026-02-01')",
+                        ("Private fixture", "Not public", path, draft))
         password_hash = "$2y$04$qGzOSwDpk3DwkERJbP.zsuFsyyjmAMwbQByLMBLb/Y77gxpIIJWGO"
         for member_id, name, email in [
             ("M001", "Siti Rahma", "siti.rahma@example.org"),

@@ -162,7 +162,7 @@ def execute(raw, url, report, php_command=None, php_wasm_modules=None):
             fixture_env = dict(env, SLIMS_TEST_CREATE_FIXTURE='1')
             run_stage('bootstrap-empty-fixture', [sys.executable, 'tools/setup_member_mysql_test.py'], fixture_env, results)
             run_stage('mysql-fresh-read', cargo + ['--features', 'member-sqlite', '--test',
-                      'member_mysql', '--', '--ignored'], env, results)
+                      'member_mysql', '--test', 'content_mysql', '--', '--ignored'], env, results)
             server_env = dict(env, SLIMS_ADDR='0.0.0.0:0', SLIMS_ROOT=str(ROOT), SLIMS_DB=raw,
                               SLIMS_MEMBER_EXPERIMENTAL='1', SLIMS_MEMBER_INSECURE_COOKIE='1',
                               SLIMS_SESSION_DB=str(directory / 'http-sessions.sqlite'))

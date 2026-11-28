@@ -969,3 +969,21 @@ This checks consistency, not authenticity or production acceptance; reports can
 be forged and source changes reverted mid-run escape detection. Old reports
 must be regenerated. Database-free safety tests (11) passed; real MySQL scope
 acceptance is still pending. No schema, runtime or production-write change.
+
+## ADR-0050: read-only public news and content
+
+Port public `content` reads for `/news`, `/pages/{path}` and legacy query routes.
+Filter drafts/admin/headerinfo/invalid paths before pagination, bound offsets,
+use stable ordering with an 11-row sentinel. Literal keyword search instead of
+BOOLEAN FULLTEXT; no total count. SQL inputs use hex, independent of backslash
+mode. Default Store implementation fails closed. Unknown legacy page selectors
+now produce a content lookup/404 rather than falling back to catalog home.
+
+Do not execute stored rich HTML: emit only exact attribute-free formatting tags
+and escape everything else under restrictive CSP; title/body bounds fail with
+413. Language fallback, links/images/CKEditor/plugin output and CMS writes are
+not ported. See docs/opac-content.md for exact compatibility restrictions.
+Fix test HTTP client HEAD handling discovered by actual TCP regression tests.
+Add source-derived gate cases, six content tests and opt-in fresh MySQL fixture
+coverage. No schema change or production writer enablement. Real SQL tests are
+compiled only in this increment; full PHP and MySQL acceptance remain pending.

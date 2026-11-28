@@ -13,9 +13,13 @@ pub fn handle(request: &Request, state: &AppState) -> Response {
     match path {
         "/" => home(request, state),
         "/search" => search(request, state, false),
+        "/news" => crate::content::handle(request, state, None),
         "/member" => member(state),
         "/index.php" => legacy(request, state),
         _ => {
+            if let Some(slug) = path.strip_prefix("/pages/") {
+                return crate::content::handle(request, state, Some(&url_decode(slug)));
+            }
             if let Some(id) = path.strip_prefix("/biblio/") {
                 return detail(request, state, &url_decode(id));
             }
@@ -326,8 +330,11 @@ fn member(state: &AppState) -> Response {
 
 fn legacy(request: &Request, state: &AppState) -> Response {
     match request.query_or("p", "") {
+        "news" => crate::content::handle(request, state, None),
+        "headerinfo" => Response::redirect("/"),
         "show_detail" => detail(request, state, request.query_or("id", "")),
         "member" => member(state),
+        slug if !slug.is_empty() => crate::content::handle(request, state, Some(slug)),
         _ => {
             if request.query("search").is_some()
                 || request.query("keywords").is_some()

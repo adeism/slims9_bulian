@@ -388,3 +388,15 @@ impl SearchResult {
         }
     }
 }
+
+/// Published OPAC content. Draft/admin rows must be excluded by the store.
+#[derive(Clone, Debug)]
+pub struct PublicContent {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+    pub path: String,
+    pub is_news: bool,
+    pub updated: String,
+    pub published: Option<String>,
+}
