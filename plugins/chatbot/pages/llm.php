@@ -23,6 +23,8 @@ use Chatbot\Config;
 use Chatbot\Http;
 use Chatbot\Lang;
 use Chatbot\Llm;
+use Chatbot\LlmBreaker;
+use Chatbot\LogStore;
 
 $chatbotConfig = Config::all();
 $chatbotLocale = Lang::locale($chatbotConfig);
@@ -38,6 +40,10 @@ if (!Admin::can($chatbotActor, $chatbotConfig, 'admin_llm')) {
 }
 
 $chatbotActorLabel = Admin::label($chatbotActor);
+$chatbotLogDir = trim((string)($chatbotConfig['log']['dir'] ?? ''));
+$chatbotLogDir = $chatbotLogDir !== '' ? $chatbotLogDir : LogStore::defaultDir();
+$chatbotBreaker = (new LlmBreaker($chatbotLogDir, $chatbotConfig))->state();
+$chatbotAsk = null;
 $chatbotNotice = '';
 $chatbotNoticeType = 'info';
 $chatbotTest = null;
@@ -79,6 +85,19 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['action'])) {
         }
     } elseif ($chatbotAction === 'test') {
         $chatbotTest = $chatbotLlm->test();
+    } elseif ($chatbotAction === 'reset') {
+        (new LlmBreaker($chatbotLogDir, $chatbotConfig))->reset();
+        $chatbotNotice = Lang::t($chatbotLocale, 'llm_reset_done');
+        $chatbotNoticeType = 'success';
+    } elseif ($chatbotAction === 'ask') {
+        $question = trim((string)($_POST['question'] ?? ''));
+
+        if ($question === '') {
+            $chatbotNotice = Lang::t($chatbotLocale, 'ui_empty_message');
+            $chatbotNoticeType = 'warning';
+        } else {
+            $chatbotAsk = $chatbotLlm->chat(Llm::prompt($question, $chatbotLocale));
+        }
     }
 }
 
@@ -133,6 +152,53 @@ $chatbotProblems = $chatbotStatus['problems'];
                 </tr>
             </tbody>
         </table>
+    </div>
+
+    <div class="chatbot-admin__detail">
+        <h2><?php echo $e(Lang::t($chatbotLocale, 'llm_breaker')); ?></h2>
+        <?php
+        $chatbotUntil = (int)$chatbotBreaker['until'];
+        $chatbotFailures = (int)$chatbotBreaker['failures'];
+
+        if ($chatbotUntil > time()) {
+            echo '<p class="chatbot-admin__off">' . $e(Lang::t($chatbotLocale, 'llm_breaker_open', [
+                'until' => gmdate('Y-m-d H:i', $chatbotUntil) . ' UTC',
+                'failures' => $chatbotFailures,
+                'error' => (string)$chatbotBreaker['last_error'],
+            ])) . '</p>';
+        } elseif ($chatbotFailures > 0) {
+            echo '<p>' . $e(Lang::t($chatbotLocale, 'llm_breaker_count', [
+                'failures' => $chatbotFailures,
+                'error' => (string)$chatbotBreaker['last_error'],
+            ])) . '</p>';
+        } else {
+            echo '<p>' . $e(Lang::t($chatbotLocale, 'llm_breaker_ok')) . '</p>';
+        }
+        ?>
+        <form method="post" class="chatbot-admin__filters">
+            <input type="hidden" name="csrf_token" value="<?php echo $e(Http::token()); ?>">
+            <input type="hidden" name="action" value="reset">
+            <button type="submit" class="btn btn-default btn-sm"><?php echo $e(Lang::t($chatbotLocale, 'llm_reset')); ?></button>
+        </form>
+    </div>
+
+    <div class="chatbot-admin__detail">
+        <h2><?php echo $e(Lang::t($chatbotLocale, 'llm_ask')); ?></h2>
+        <form method="post" class="chatbot-admin__filters">
+            <input type="hidden" name="csrf_token" value="<?php echo $e(Http::token()); ?>">
+            <input type="hidden" name="action" value="ask">
+            <input type="text" name="question" size="60" maxlength="500" required>
+            <button type="submit" class="btn btn-default btn-sm"><?php echo $e(Lang::t($chatbotLocale, 'llm_ask')); ?></button>
+        </form>
+        <?php if (is_array($chatbotAsk)) { ?>
+            <?php if (!empty($chatbotAsk['ok'])) { ?>
+                <p><strong><?php echo $e(Lang::t($chatbotLocale, 'llm_answer')); ?>:</strong>
+                    <?php echo $e((string)$chatbotAsk['text']); ?></p>
+                <p><small><?php echo $e(Lang::t($chatbotLocale, 'llm_test_ok', ['ms' => (int)$chatbotAsk['ms']])); ?></small></p>
+            <?php } else { ?>
+                <p class="chatbot-admin__off"><?php echo $e(Lang::t($chatbotLocale, 'llm_test_failed', ['error' => (string)($chatbotAsk['error'] ?? '?')])); ?></p>
+            <?php } ?>
+        <?php } ?>
     </div>
 
     <?php if (is_array($chatbotTest)) { ?>

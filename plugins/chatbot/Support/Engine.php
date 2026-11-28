@@ -40,6 +40,9 @@ final class Engine
     /** @var bool hand the raw action to the caller instead of a browser token */
     private $stateless;
 
+    /** @var string the message being answered (shared with the model prompt) */
+    private $lastMessage = '';
+
     /**
      * @param array       $actor   from Actor::fromOpac()/fromAdmin()
      * @param array       $config  defaults to Config::all()
@@ -75,6 +78,8 @@ final class Engine
         if (!RateLimit::hit(RateLimit::MESSAGES, (int)($this->config['rate_limit_per_minute'] ?? 20), 60)) {
             return $this->plain(Lang::t($this->locale, 'rate_limited'), 'warn');
         }
+
+        $this->lastMessage = $message;
 
         if (!is_null($confirmToken) && $confirmToken !== '') {
             return $this->handleConfirm($confirmToken);
@@ -235,9 +240,108 @@ final class Engine
      */
     private function notUnderstood(): array
     {
+        $meta = [];
+        $answer = $this->modelAnswer($meta);
+
+        if (!is_null($answer)) {
+            return $answer;
+        }
+
         return $this->plain(Lang::t($this->locale, 'not_understood', [
             'examples' => Lang::t($this->locale, 'examples_' . $this->role),
-        ]), 'info');
+        ]), 'info', [], $meta);
+    }
+
+    /**
+     * Ask the optional model, but only here: the engine has already failed to
+     * recognise the message and the FAQ has already said no. Commands,
+     * searches, loans and every write keep their deterministic answers.
+     *
+     * Failures are silent to the visitor and visible to the operator: the
+     * circuit breaker records the code and the page shows it.
+     *
+     * @param array $meta filled with what happened, for the conversation log
+     * @return array|null
+     */
+    private function modelAnswer(array &$meta): ?array
+    {
+        $settings = isset($this->config['llm']) && is_array($this->config['llm']) ? $this->config['llm'] : [];
+        $enabled = !empty($settings['enabled'])
+            && (!array_key_exists('use_for_answers', $settings) || !empty($settings['use_for_answers']));
+
+        if (!$enabled || trim($this->lastMessage) === '') {
+            return null;
+        }
+
+        $llm = new Llm($this->config);
+
+        if (!$llm->configured() || !$llm->reachable()) {
+            return null;
+        }
+
+        $perMinute = max(1, (int)($settings['max_calls_per_minute'] ?? 6));
+
+        if (!RateLimit::hit(RateLimit::LLM, $perMinute, 60)) {
+            $meta['stage'] = 'llm-throttled';
+
+            return null;
+        }
+
+        $breaker = new LlmBreaker($this->logDir(), $this->config);
+
+        if ($breaker->blocked()) {
+            $meta['stage'] = 'llm-circuit';
+            $meta['llm_error'] = $breaker->state()['last_error'];
+
+            return null;
+        }
+
+        $result = $llm->chat(Llm::prompt($this->lastMessage, $this->locale));
+
+        if (empty($result['ok'])) {
+            $code = (string)($result['error'] ?? 'UNKNOWN');
+            $breaker->fail($code);
+            $meta['stage'] = 'llm-error';
+            $meta['llm_error'] = $code;
+
+            return null;
+        }
+
+        $text = trim(preg_replace('/\s+/', ' ', (string)($result['text'] ?? '')));
+        $text = Str::slice($text, 0, Llm::MAX_ANSWER);
+
+        if ($text === '') {
+            $breaker->fail('EMPTY_CHOICE');
+            $meta['stage'] = 'llm-error';
+            $meta['llm_error'] = 'EMPTY_CHOICE';
+
+            return null;
+        }
+
+        $breaker->succeed();
+
+        $meta['stage'] = 'llm';
+        $meta['intent'] = 'llm.answer';
+        $meta['llm'] = [
+            'model' => (string)($result['model'] ?? ''),
+            'ms' => (int)($result['ms'] ?? 0),
+        ];
+
+        // respond() still screens this text with the answer guard, exactly
+        // like every other reply.
+        return $this->plain($text, 'info', [], $meta);
+    }
+
+    /**
+     * Directory for the breaker state: next to the conversation log.
+     *
+     * @return string
+     */
+    private function logDir(): string
+    {
+        $dir = trim((string)($this->config['log']['dir'] ?? ''));
+
+        return $dir !== '' ? $dir : LogStore::defaultDir();
     }
 
     /**
@@ -425,6 +529,20 @@ final class Engine
         $sort = (string)($data['sort'] ?? ($params['sort'] ?? 'relevance'));
 
         if (empty($rows)) {
+            // A search the rule table only guessed at, with nothing and no
+            // "did you mean" to show, is the same dead end as an unrecognised
+            // message. An explicit search (confidence 0.85) stays a search.
+            if ((float)($meta['confidence'] ?? 1.0) <= 0.45 && empty($data['suggestions'])) {
+                $llmMeta = [];
+                $model = $this->modelAnswer($llmMeta);
+
+                if (!is_null($model)) {
+                    return $model;
+                }
+
+                $meta = array_merge($meta, $llmMeta);
+            }
+
             return $this->respond(
                 Lang::t($this->locale, 'no_results', ['query' => $query === '' ? '-' : $query]),
                 [

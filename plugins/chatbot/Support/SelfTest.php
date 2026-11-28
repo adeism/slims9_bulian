@@ -43,6 +43,7 @@ final class SelfTest
         self::guard($cases);
         self::evaluation($cases);
         self::llm($cases);
+        self::llmAnswers($cases);
         self::channels($cases);
         self::stock($cases);
         self::http($cases);
@@ -2709,6 +2710,230 @@ final class SelfTest
                 && strpos($audit, 'sk-test-1234abcd') === false
                 && $savedAgain === false,
             json_encode(['stored' => array_keys($stored), 'audit' => substr($audit, 0, 120)])
+        );
+
+        Llm::setTransport(null);
+    }
+
+
+    /**
+     * Phase 2: the model is a fallback for the one branch that has no answer,
+     * never a replacement for a command, and every failure keeps the old text.
+     *
+     * @param array $cases
+     * @return void
+     */
+    private static function llmAnswers(array &$cases)
+    {
+        $_SESSION = [];
+        RateLimit::reset();
+
+        $dir = self::tempDir('llmanswers');
+        $config = self::config();
+        $config['log'] = array_merge($config['log'], ['dir' => $dir]);
+        $config['llm'] = array_merge(Llm::defaults(), [
+            'enabled' => true,
+            'base_url' => 'http://127.0.0.1:11434/v1',
+            'model' => 'llama3.1:8b',
+            'timeout' => 5,
+            'use_for_answers' => true,
+        ]);
+
+        $sent = [];
+        $answerText = 'Literasi informasi adalah kemampuan menemukan dan menilai sumber.';
+        $failWith = null;
+
+        Llm::setTransport(function ($method, $url, $headers, $body, $timeout) use (&$sent, &$answerText, &$failWith) {
+            $sent[] = ['url' => $url, 'body' => $body];
+
+            if (!is_null($failWith)) {
+                return ['status' => 0, 'body' => '', 'error' => $failWith];
+            }
+
+            return [
+                'status' => 200,
+                'body' => json_encode([
+                    'model' => 'llama3.1:8b',
+                    'choices' => [['message' => ['content' => $answerText]]],
+                    'usage' => ['total_tokens' => 30],
+                ]),
+                'error' => '',
+            ];
+        });
+
+        $question = 'apa itu literasi informasi';
+        $empty = function () use ($question) {
+            $service = new TestService();
+            $service->emptyQueries = [$question];
+
+            return $service;
+        };
+
+        // ---- switched off: identical to the deterministic answer ----------
+        $off = $config;
+        $off['llm'] = array_merge($config['llm'], ['enabled' => false]);
+        $sent = [];
+        $_SESSION = [];
+        RateLimit::reset();
+        $disabled = (new Engine(['role' => 'guest'], $off, $empty(), true))->handle($question);
+
+        self::add(
+            $cases,
+            'llm answer: switched off means the old text and no request',
+            $sent === []
+                && (string)($disabled['meta']['stage'] ?? '') !== 'llm'
+                && strpos((string)($disabled['reply']['text'] ?? ''), 'Literasi') === false
+        );
+
+        // ---- on: only the unknown-answer branch ----------------------------
+        $sent = [];
+        $_SESSION = [];
+        RateLimit::reset();
+        $answered = (new Engine(['role' => 'guest'], $config, $empty(), true))->handle($question);
+        $request = json_decode((string)($sent[0]['body'] ?? ''), true);
+
+        self::add(
+            $cases,
+            'llm answer: an unrecognised question is answered by the model',
+            ($answered['reply']['text'] ?? '') === $answerText
+                && ($answered['meta']['stage'] ?? '') === 'llm'
+                && ($answered['meta']['intent'] ?? '') === 'llm.answer'
+                && ($answered['meta']['llm']['model'] ?? '') === 'llama3.1:8b',
+            json_encode(['meta' => $answered['meta'] ?? null])
+        );
+
+        self::add(
+            $cases,
+            'llm answer: the prompt carries the question and nothing else',
+            count((array)($request['messages'] ?? [])) === 2
+                && ($request['messages'][0]['role'] ?? '') === 'system'
+                && ($request['messages'][1]['content'] ?? '') === $question
+                && strpos((string)$sent[0]['body'], '123') === false
+                && strpos((string)$sent[0]['body'], 'B00001') === false
+                && strpos((string)$sent[0]['body'], 'Laskar Pelangi') === false,
+            json_encode($request['messages'] ?? null)
+        );
+
+        // ---- a member id never reaches the prompt -------------------------
+        $sent = [];
+        $_SESSION = [];
+        RateLimit::reset();
+        (new Engine(['role' => 'member', 'member_id' => '123'], $config, $empty(), true))->handle($question);
+
+        self::add(
+            $cases,
+            'llm answer: the actor identity is not part of the prompt',
+            isset($sent[0]['body'])
+                && strpos((string)$sent[0]['body'], 'member_id') === false
+                && strpos((string)$sent[0]['body'], '123') === false
+        );
+
+        // ---- command intents never reach the model ------------------------
+        $sent = [];
+        $_SESSION = [];
+        RateLimit::reset();
+        (new Engine(['role' => 'member', 'member_id' => '123'], $config, new TestService(), true))->handle('pinjaman saya');
+
+        self::add(
+            $cases,
+            'llm answer: a command keeps its deterministic path',
+            $sent === []
+        );
+
+        // ---- the answer guard still screens the model ---------------------
+        $guardConfig = $config;
+        $guardConfig['guard'] = ['enabled' => true, 'file' => $dir . '/guard.php', 'log_hits' => true];
+        Guard::save([[
+            'id' => 'g-llm',
+            'scope' => 'answer',
+            'type' => 'word',
+            'pattern' => 'rahasia',
+            'category' => 'policy',
+            'action' => 'refuse',
+            'note' => 'test',
+            'enabled' => true,
+        ]], 'test', $guardConfig);
+
+        $answerText = 'Ini rahasia perpustakaan.';
+        $sent = [];
+        $_SESSION = [];
+        RateLimit::reset();
+        $screened = (new Engine(['role' => 'guest'], $guardConfig, $empty(), true))->handle($question);
+
+        self::add(
+            $cases,
+            'llm answer: the answer guard screens model text too',
+            strpos((string)($screened['reply']['text'] ?? ''), 'rahasia') === false
+                && (string)($screened['meta']['guard'] ?? '') !== ''
+        );
+
+        $answerText = 'Literasi informasi adalah kemampuan menemukan dan menilai sumber.';
+
+        // ---- failures fall back and feed the breaker ----------------------
+        $failWith = 'TIMEOUT';
+        $sent = [];
+        $_SESSION = [];
+        RateLimit::reset();
+        $failed = (new Engine(['role' => 'guest'], $config, $empty(), true))->handle($question);
+        $breaker = new LlmBreaker($dir, $config);
+
+        self::add(
+            $cases,
+            'llm answer: a timeout keeps the old text and opens the breaker',
+            ($failed['meta']['stage'] ?? '') === 'llm-error'
+                && ($failed['meta']['llm_error'] ?? '') === 'TIMEOUT'
+                && strpos((string)($failed['reply']['text'] ?? ''), 'Literasi') === false
+                && $breaker->state()['failures'] >= 1
+        );
+
+        // two more failures reach the threshold, then the model is not called
+        (new Engine(['role' => 'guest'], $config, $empty(), true))->handle($question);
+        (new Engine(['role' => 'guest'], $config, $empty(), true))->handle($question);
+        $sent = [];
+        $circuit = (new Engine(['role' => 'guest'], $config, $empty(), true))->handle($question);
+
+        self::add(
+            $cases,
+            'llm answer: after three failures the breaker stops calling the model',
+            $sent === []
+                && ($circuit['meta']['stage'] ?? '') === 'llm-circuit'
+                && $breaker->blocked() === true
+                && strpos((string)($circuit['reply']['text'] ?? ''), 'Literasi') === false
+        );
+
+        // ---- per-session budget -------------------------------------------
+        $failWith = null;
+        $breaker->reset();
+        $throttledConfig = $config;
+        $throttledConfig['llm'] = array_merge($config['llm'], ['max_calls_per_minute' => 1]);
+        $sent = [];
+        $_SESSION = [];
+        RateLimit::reset();
+        (new Engine(['role' => 'guest'], $throttledConfig, $empty(), true))->handle($question);
+        $calls = count($sent);
+        $throttled = (new Engine(['role' => 'guest'], $throttledConfig, $empty(), true))->handle($question);
+
+        self::add(
+            $cases,
+            'llm answer: the per-minute budget stops a second call',
+            $calls === 1
+                && count($sent) === 1
+                && ($throttled['meta']['stage'] ?? '') === 'llm-throttled'
+                && strpos((string)($throttled['reply']['text'] ?? ''), 'Literasi') === false
+        );
+
+        // ---- the reply is capped ------------------------------------------
+        $answerText = trim(str_repeat('kata ', 400));
+        $sent = [];
+        $_SESSION = [];
+        RateLimit::reset();
+        $long = (new Engine(['role' => 'guest'], $config, $empty(), true))->handle($question);
+
+        self::add(
+            $cases,
+            'llm answer: a runaway reply is cut to the answer limit',
+            Str::length((string)($long['reply']['text'] ?? '')) <= Llm::MAX_ANSWER
+                && Str::length((string)($long['reply']['text'] ?? '')) > 400
         );
 
         Llm::setTransport(null);

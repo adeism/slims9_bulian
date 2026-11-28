@@ -36,6 +36,9 @@ final class Llm
     /** Longest single message sent to the model. */
     const MAX_MESSAGE = 4000;
 
+    /** Longest answer accepted from the model, in characters. */
+    const MAX_ANSWER = 600;
+
     /** @var callable|null test seam: replaces the network */
     private static $transport = null;
 
@@ -88,6 +91,9 @@ final class Llm
             'verify_tls' => true,
             'allow_remote' => false,
             'max_calls_per_minute' => 6,
+            'use_for_answers' => true,
+            'circuit_failures' => 3,
+            'circuit_cooldown' => 300,
         ], $llm);
     }
 
@@ -165,6 +171,9 @@ final class Llm
         $values['max_tokens'] = self::number($values['max_tokens'] ?? 256, 16, 4096, 256, 'max_tokens', true);
         $values['temperature'] = self::number($values['temperature'] ?? 0.2, 0.0, 2.0, 0.2, 'temperature', false);
         $values['max_calls_per_minute'] = self::number($values['max_calls_per_minute'] ?? 6, 1, 60, 6, 'max_calls_per_minute', true);
+        $values['use_for_answers'] = self::flag($values['use_for_answers'] ?? true, 'use_for_answers');
+        $values['circuit_failures'] = self::number($values['circuit_failures'] ?? 3, 1, 20, 3, 'circuit_failures', true);
+        $values['circuit_cooldown'] = self::number($values['circuit_cooldown'] ?? 300, 30, 3600, 300, 'circuit_cooldown', true);
 
         self::$problems = array_values(array_unique(self::$problems));
 
@@ -511,6 +520,30 @@ final class Llm
             'model' => (string)($decoded['model'] ?? $model),
             'usage' => is_array($decoded['usage'] ?? null) ? $decoded['usage'] : [],
             'ms' => $ms,
+        ];
+    }
+
+    /**
+     * The whole prompt: one instruction and the question, nothing else.
+     *
+     * No catalogue rows, no FAQ text, no member id — the model is not a
+     * database and is not given data it could invent around. Shared with
+     * `chatbot:llm --ask` so the shell exercises the same prompt.
+     *
+     * @param string $question
+     * @param string $locale
+     * @return array
+     */
+    public static function prompt(string $question, string $locale = 'id'): array
+    {
+        return [
+            [
+                'role' => 'system',
+                'content' => Lang::t($locale, 'llm_system', [
+                    'language' => $locale === 'id' ? 'Bahasa Indonesia' : 'English',
+                ]),
+            ],
+            ['role' => 'user', 'content' => trim(Str::slice($question, 0, 500))],
         ];
     }
 

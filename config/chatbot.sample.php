@@ -186,6 +186,9 @@ return [
         'verify_tls' => true,
         'allow_remote' => false,
         'max_calls_per_minute' => 6,
+        'use_for_answers' => true,                           // only where the engine has no answer
+        'circuit_failures' => 3,                             // stop after N failures in a row
+        'circuit_cooldown' => 300,                           // ...for this many seconds
         'file' => '',                                        // empty = files/chatbot/llm.php
     ],
 

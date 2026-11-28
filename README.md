@@ -201,7 +201,7 @@ cp config/chatbot.sample.php config/chatbot.php
 cp plugins/chatbot/Support/faq.sample.php config/chatbot.faq.php   # optional
 php index.php plugin:list --type=all && php index.php plugin:activate <id>
 
-php index.php chatbot:selftest                      # 196 offline checks
+php index.php chatbot:selftest                      # 206 offline checks
 php index.php chatbot:ask "pinjaman terlambat"      # staff view
 php index.php chatbot:ask "pinjaman saya" --role=member --as=123
 php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
@@ -330,7 +330,7 @@ php plugins/chatbot/tests/run.php     # standalone runner
 php index.php chatbot:selftest        # inside SLiMS, same suite
 ```
 
-196 assertions cover the Indonesian/English intent table, role policy (guest,
+206 assertions cover the Indonesian/English intent table, role policy (guest,
 member, staff), confirmation replay/expiry/session binding, rate limits, the
 engine against a fake service, the HTTP pipeline (CSRF, empty message, disabled
 plugin), the WhatsApp/Telegram channel (payload shapes, allow-list identity,

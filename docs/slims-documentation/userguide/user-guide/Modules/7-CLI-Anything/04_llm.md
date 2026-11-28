@@ -64,9 +64,28 @@ Kode keluar: `0` tersambung, `1` gagal, `2` belum dikonfigurasi.
 | `RATE_LIMITED` | kuota penyedia habis | tunggu atau ganti model |
 | `REMOTE_BLOCKED` | host di luar jaringan | centang izin remote bila disengaja |
 
-### Yang belum aktif
+### Kapan model ikut menjawab
 
-Halaman ini baru menyimpan dan menguji koneksi. Model **belum** dipakai untuk
-menjawab; fase berikutnya (lihat `docs/plans/chatbot-llm-plan.md`) baru
-menyambungkannya, dengan aturan: hanya saat mesin deterministik tidak punya
-jawaban, guard tetap menyaring, dan kegagalan kembali ke jawaban lama.
+Model hanya dipakai pada satu situasi: **chat tidak punya jawaban sendiri**.
+
+* Perintah, pencarian, pinjaman, data anggota, dan semua transaksi tetap
+  dijawab mesin deterministik; model tidak dipanggil.
+* Pesan yang tidak dikenali, atau pencarian tebakan yang tidak menemukan apa
+  pun dan tidak punya saran "mungkin maksud Anda", boleh dijawab model.
+* Pertanyaan pengunjung sudah disaring aturan `question` sebelum mesin
+  berjalan, dan teks jawaban model disaring aturan `answer` sebelum tampil.
+* Yang dikirim ke model hanya **pertanyaan dan bahasa**. Tidak ada judul
+  katalog, entri FAQ, atau data anggota.
+
+Jawaban model dipotong 600 karakter. Bila gagal (waktu habis, kunci salah,
+kuota habis, balasan rusak), pengunjung tetap menerima jawaban lama, kode
+kegagalan masuk riwayat (`stage=llm-error`), dan **Penghentian otomatis** di
+halaman ini menghitungnya. Setelah **3 kegagalan berturut-turut**, panggilan
+dihentikan selama **5 menit** agar server model yang mati tidak memperlambat
+setiap pertanyaan; tekan **Setel ulang breaker** setelah masalahnya beres.
+
+Batas **Panggilan per menit** (bawaan 6) berlaku per sesi pengunjung.
+
+Tombol **Tanya model langsung** mengirim satu pertanyaan dengan prompt yang
+sama seperti chat, tanpa menyentuh data perpustakaan — cara cepat memeriksa
+nada jawaban sebelum diaktifkan.

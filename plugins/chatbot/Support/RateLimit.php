@@ -16,6 +16,7 @@ final class RateLimit
     const KEY = 'chatbot_rate';
     const MESSAGES = 'messages';
     const WRITES = 'writes';
+    const LLM = 'llm';
 
     /**
      * Count one hit. Returns false when the bucket is exhausted.

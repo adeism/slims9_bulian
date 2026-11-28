@@ -1,6 +1,6 @@
 # Rencana: koneksi LLM lokal / API kompatibel OpenAI
 
-**Status:** fase 1 selesai (pengaturan + koneksi + uji). Fase 2 menunggu keputusan pemakaian (§7).
+**Status:** fase 1 dan 2 selesai (pengaturan + koneksi + uji, lalu pemakaian sebagai fallback). Keputusan pemakaian: fallback saja, konteks hanya pertanyaan + bahasa, API OpenAI-compatible.
 **Konteks:** PR #1 (`arena/dbd7cd5a-slims9-bulian`). Chatbot sekarang deterministik: intent, FAQ, dan CLI-Anything. Tidak ada panggilan jaringan keluar sama sekali.
 
 ## 1. Masalah
@@ -34,10 +34,12 @@ tersebar di berkas yang salah dan tidak ada cara mengujinya.
 | Fase | Isi | Hasil |
 |---|---|---|
 | 1 — pengaturan & koneksi | blok `llm` di config, overlay `files/chatbot/llm.php`, `Support/Llm.php` (klien + validasi + SSRF), halaman **System → Chatbot LLM**, perintah `chatbot:llm --test/--models` | administrator bisa mengatur dan menguji koneksi tanpa menyentuh kode |
-| 2 — pemakaian | jawaban LLM hanya untuk `intent:none`/tanpa FAQ, dengan guard + fallback + circuit breaker + batas per menit | jawaban lebih luwes tanpa mengorbankan jalur yang diuji |
+| 2 — pemakaian | jawaban LLM hanya saat tidak ada jawaban (intent none atau pencarian tebakan yang kosong), dengan guard, fallback, circuit breaker, batas per menit | jawaban lebih luwes tanpa mengorbankan jalur yang diuji |
 | 3 — pengukuran | asersi: LLM mati = jawaban identik; prompt tanpa PII; output disaring guard; kegagalan tidak memperlambat jawaban | angka, bukan klaim |
 
-Fase 1 selesai: `Support/Llm.php`, `pages/llm.php`, `Commands/ChatbotLlm.php`, blok `llm` di config, 11 asersi baru (suite 196). Fase 2 menunggu keputusan pemakaian (lihat §7).
+Fase 1 selesai: `Support/Llm.php`, `pages/llm.php`, `Commands/ChatbotLlm.php`, blok `llm` di config.
+
+Fase 2 selesai: `Engine::modelAnswer()` hanya dipanggil dari `notUnderstood()` dan dari pencarian tebakan (confidence ≤ 0.45) yang kosong tanpa saran; prompt dua pesan (instruksi + pertanyaan), jawaban ≤600 karakter, guard `answer` tetap menyaring, kegagalan mengembalikan jawaban deterministik, `LlmBreaker` membuka setelah 3 kegagalan selama 300 detik, dan `max_calls_per_minute` membatasi per sesi. Sepuluh asersi baru; total suite **206**. Fase 2 menunggu keputusan pemakaian (lihat §7).
 
 ## 4. Konfigurasi
 

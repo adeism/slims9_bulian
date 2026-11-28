@@ -25,7 +25,7 @@ use Commands\Support\CliAnythingCommand;
 
 class ChatbotLlm extends CliAnythingCommand
 {
-    protected string $signature = 'chatbot:llm {--test} {--models} {--json}';
+    protected string $signature = 'chatbot:llm {--test} {--models} {--json} {--ask=}';
 
     protected string $description = 'Show, save or test the local/OpenAI-compatible model connection';
 
@@ -43,6 +43,30 @@ class ChatbotLlm extends CliAnythingCommand
         $llm = new Llm($config);
         $status = $llm->status();
         $test = null;
+
+        $question = trim((string)$this->option('ask'));
+
+        if ($question !== '') {
+            $answer = $llm->chat(Llm::prompt($question, Lang::locale($config)));
+
+            if ($this->wantsJson()) {
+                $this->output(json_encode(['answer' => $answer], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+                return !empty($answer['ok']) ? 0 : 1;
+            }
+
+            if (!empty($answer['ok'])) {
+                $this->output((string)$answer['text']);
+                $this->newLine();
+                $this->success(sprintf('%d ms, model %s', (int)$answer['ms'], (string)($answer['model'] ?? '')));
+
+                return 0;
+            }
+
+            $this->error('model failed: ' . (string)($answer['error'] ?? '?'));
+
+            return 1;
+        }
 
         if ($this->flag('test') || $this->flag('models')) {
             $test = $llm->test();

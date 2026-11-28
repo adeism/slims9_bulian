@@ -535,9 +535,17 @@ nothing until an administrator adds a rule and turns the guard on.
 ## Local models and OpenAI-compatible APIs
 
 Optional, and off by default. The chat keeps answering from intents, FAQ and
-the catalogue service; this block only stores *how* to reach a model you
-choose, and the model is not wired into answering yet (that is phase 2 of
-`docs/plans/chatbot-llm-plan.md`).
+the catalogue service; the model is a **fallback for the one branch that has no
+answer**, never a replacement:
+
+* commands, searches, loans, members and every write keep their deterministic
+  handler — the model is not consulted;
+* a message the rule table does not recognise, or a guessed catalogue search
+  that found nothing and has no "did you mean", may be answered by the model;
+* the guard screens the model's text exactly like any other reply, and the
+  question was already screened before the engine ran.
+
+Everything in this section is inert unless `llm.enabled` is true.
 
 One shape covers Ollama (`/v1`), LM Studio, llama.cpp server, vLLM, LocalAI,
 OpenRouter and OpenAI: `POST {base_url}/chat/completions` and
@@ -547,9 +555,10 @@ Configure it at **System -> Chatbot LLM**, or in `config/chatbot.php`, or from
 the shell:
 
 ```bash
-php index.php chatbot:llm            # what is configured (key masked)
-php index.php chatbot:llm --test     # GET /models, latency, model list
-php index.php chatbot:llm --models   # same, plus every model id
+php index.php chatbot:llm                  # what is configured (key masked)
+php index.php chatbot:llm --test           # GET /models, latency, model list
+php index.php chatbot:llm --models         # same, plus every model id
+php index.php chatbot:llm --ask="jam buka sabtu"   # the real prompt, one answer
 php index.php chatbot:llm --test --json
 ```
 
@@ -570,7 +579,22 @@ outside git) so the config file stays in version control without a secret;
 | `temperature` | `0.2` | 0-2 |
 | `verify_tls` | `true` | keep it on for anything leaving the machine |
 | `allow_remote` | `false` | a host outside the local network needs an explicit yes |
-| `max_calls_per_minute` | `6` | per-session budget for phase 2 |
+| `max_calls_per_minute` | `6` | model calls per session, per minute |
+| `use_for_answers` | `true` | let the model answer where the engine has none |
+| `circuit_failures` | `3` | consecutive failures before the breaker opens |
+| `circuit_cooldown` | `300` | seconds the breaker stays open |
+
+The prompt is two messages: one instruction ("answer in this language, at most
+60 words, you cannot see the catalogue, loans, members or opening hours, never
+invent rules or fees, never ask for personal data") and the question. No
+catalogue row, no FAQ text, no member id. A model answer is capped at 600
+characters plus one line of whitespace.
+
+When the model fails (timeout, 401, 429, malformed JSON) the visitor sees the
+deterministic answer that would have been sent anyway, the failure code goes to
+the conversation log as `stage=llm-error`, and the breaker counts it. Three
+failures in a row stop the calls for five minutes so a dead server cannot add a
+timeout to every question; **Chatbot LLM** shows the state and a reset button.
 
 What the client refuses, by design:
 
@@ -864,12 +888,13 @@ plugins/chatbot/
 │   ├── History.php             filters, paging, CSV, summary for staff
 │   ├── Evaluation.php          corpus accuracy, sweep, typo fuzz, parity
 │   ├── Llm.php                 local/OpenAI-compatible client + settings
+│   ├── LlmBreaker.php          stops calling a model that keeps failing
 │   ├── Admin.php               which staff surface is open to whom
 │   ├── TestService.php         fake CLI-Anything for offline tests
 │   ├── vendor/
 │   │   ├── CliAnything.php     copy of the service, stock-install fallback
 │   │   └── README.md           why it exists and how to re-sync it
-│   └── SelfTest.php            196 assertions
+│   └── SelfTest.php            206 assertions
 ├── pages/
 │   ├── opac.php                ?p=chatbot (guest + member)
 │   ├── admin.php               System -> Chatbot (staff)
@@ -911,7 +936,10 @@ invalid rules, answer screening, over-blocking), the evaluation targets
 (corpus accuracy, threshold plateau, typo tolerance, language parity, render
 contract), the model connection (settings repair, key masking, endpoint
 joining, request shape, address policy, every failure code, atomic save with
-audit) and the escaping of the rendered shell.
+audit) and its fallback behaviour (off = identical answer, prompt carries only
+the question, commands never reach the model, the answer guard screens it,
+timeouts keep the old text, the breaker opens after three failures, the
+per-minute budget), and the escaping of the rendered shell.
 
 ## Troubleshooting
 

@@ -28,6 +28,14 @@ final class TestService
     public $throwOn = [];
 
     /**
+     * Queries that return nothing, so the "no results" branch can be tested
+     * with a real sentence instead of a magic token.
+     *
+     * @var string[]
+     */
+    public $emptyQueries = [];
+
+    /**
      * @return TestService
      */
     public function actingAs(string $type, string $id, string $name = ''): TestService
@@ -74,7 +82,7 @@ final class TestService
 
         $this->calls[] = ['biblio.list', [$q, $limit, $offset, $sort, $includeHidden, $options]];
 
-        if (trim($q) === 'zzz') {
+        if (trim($q) === 'zzz' || in_array(trim($q), $this->emptyQueries, true)) {
             return [
                 'items' => [], 'count' => 0, 'total' => 0, 'limit' => $limit, 'offset' => 0,
                 'query' => $q, 'tokens' => ['zzz'], 'sort' => $sort, 'stage' => 'empty', 'suggestions' => [],

@@ -178,6 +178,12 @@ final class Config
                 // A host outside the local network needs an explicit yes.
                 'allow_remote' => false,
                 'max_calls_per_minute' => 6,
+                // Use the model only where the engine has no answer.
+                'use_for_answers' => true,
+                // Stop calling after this many failures in a row...
+                'circuit_failures' => 3,
+                // ...for this many seconds.
+                'circuit_cooldown' => 300,
                 // Empty = files/chatbot/llm.php.
                 'file' => '',
             ],
@@ -296,6 +302,9 @@ final class Config
         $llm['enabled'] = self::flag($llm, 'enabled', false, 'llm.enabled');
         $llm['verify_tls'] = self::flag($llm, 'verify_tls', true, 'llm.verify_tls');
         $llm['allow_remote'] = self::flag($llm, 'allow_remote', false, 'llm.allow_remote');
+        $llm['use_for_answers'] = self::flag($llm, 'use_for_answers', true, 'llm.use_for_answers');
+        $llm['circuit_failures'] = self::intIn($llm['circuit_failures'] ?? 3, 1, 20, 3, 'llm.circuit_failures');
+        $llm['circuit_cooldown'] = self::intIn($llm['circuit_cooldown'] ?? 300, 30, 3600, 300, 'llm.circuit_cooldown');
         $values['llm'] = $llm;
 
         // ---- guard -------------------------------------------------------
