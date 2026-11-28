@@ -20,6 +20,8 @@ import time
 from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, build_opener
 
+from member_validation_report import SCHEMA_VERSION, revision, timestamp
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -123,7 +125,8 @@ def execute(raw, url, report, php_command=None, php_wasm_modules=None):
     import pymysql  # Optional test dependency; no import needed for safety unit tests.
     env = clean_environment(os.environ)
     env['SLIMS_TEST_MYSQL_URL'] = raw
-    summary = {'database': url.path[1:], 'production_ready': False,
+    summary = {'schema_version': SCHEMA_VERSION, 'source': revision(ROOT),
+               'started_at': timestamp(), 'database': url.path[1:], 'production_ready': False,
                'coverage': {'php_cli_isolated': bool(php_command), 'php_http_isolated': bool(php_wasm_modules),
                             'full_php_mysql_integration': False, 'mysql_tls': False}, 'stages': []}
     results = summary['stages']
@@ -138,7 +141,7 @@ def execute(raw, url, report, php_command=None, php_wasm_modules=None):
                 raise RuntimeError('Refusing non-empty database; choose a NEW EMPTY disposable fixture')
             cur.execute('SELECT VERSION()')
             summary['mysql_version'] = cur.fetchone()[0]
-    cargo = ['cargo', 'test', '--offline', '--manifest-path', 'rust/Cargo.toml', '--quiet']
+    cargo = ['cargo', 'test', '--offline', '--locked', '--manifest-path', 'rust/Cargo.toml', '--quiet']
     try:
         with tempfile.TemporaryDirectory(prefix='slims-member-suite-') as temp:
             directory = Path(temp)  # tempfile creates a private 0700 parent.
@@ -154,7 +157,7 @@ def execute(raw, url, report, php_command=None, php_wasm_modules=None):
             for feature in [None, 'member-crypt', 'member-sqlite']:
                 args = [] if feature is None else ['--features', feature]
                 run_stage('regression-' + (feature or 'default'), cargo + args, env, results)
-            run_stage('build-member-sqlite', ['cargo', 'build', '--offline', '--manifest-path',
+            run_stage('build-member-sqlite', ['cargo', 'build', '--offline', '--locked', '--manifest-path',
                       'rust/Cargo.toml', '--features', 'member-sqlite'], env, results)
             fixture_env = dict(env, SLIMS_TEST_CREATE_FIXTURE='1')
             run_stage('bootstrap-empty-fixture', [sys.executable, 'tools/setup_member_mysql_test.py'], fixture_env, results)
@@ -174,6 +177,8 @@ def execute(raw, url, report, php_command=None, php_wasm_modules=None):
         print('\nPASS: complete disposable member validation; NOT production acceptance', flush=True)
     finally:
         summary.setdefault('status', 'failed')
+        summary['finished_at'] = timestamp()
+        summary['source_at_finish'] = revision(ROOT)
         if report:
             report.write_text(json.dumps(summary, indent=2) + '\n')
     return summary

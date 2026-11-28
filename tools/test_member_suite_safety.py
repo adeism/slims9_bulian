@@ -92,5 +92,75 @@ class SuiteSafety(unittest.TestCase):
             self.assertNotIn('"status":"passed"', report.read_text())
 
 
+class EvidenceSafety(unittest.TestCase):
+    def evidence(self):
+        from member_validation_report import REQUIRED_STAGES, timestamp
+        return {'schema_version': 1, 'source': {'commit': 'a' * 40, 'dirty': False},
+                'source_at_finish': {'commit': 'a' * 40, 'dirty': False},
+                'started_at': timestamp(), 'finished_at': timestamp(),
+                'status': 'passed', 'production_ready': False,
+                'coverage': {'php_cli_isolated': False, 'php_http_isolated': False,
+                             'full_php_mysql_integration': False, 'mysql_tls': False},
+                'stages': [{'stage': name, 'status': 'passed'} for name in REQUIRED_STAGES]}
+
+    def test_complete_report_and_optional_checks(self):
+        from member_validation_report import verify
+        report = self.evidence()
+        self.assertTrue(verify(report, 'a' * 40))
+        report['coverage']['php_cli_isolated'] = True
+        report['stages'].insert(1, {'stage': 'php-cli-ownership-isolated', 'status': 'passed'})
+        self.assertTrue(verify(report, 'a' * 40))
+
+    def test_incomplete_failed_duplicate_and_reordered_reports_refused(self):
+        from member_validation_report import verify
+        for mode in ['missing', 'failed', 'duplicate', 'reordered', 'unknown', 'optional']:
+            report = self.evidence()
+            if mode == 'missing': report['stages'].pop()
+            if mode == 'failed': report['stages'][-1]['status'] = 'failed'
+            if mode == 'duplicate': report['stages'].append(report['stages'][0])
+            if mode == 'reordered': report['stages'].reverse()
+            if mode == 'unknown': report['stages'][0]['stage'] = 'invented'
+            if mode == 'optional': report['coverage']['php_http_isolated'] = True
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                verify(report, 'a' * 40)
+
+    def test_revision_coverage_and_timestamp_fail_closed(self):
+        from member_validation_report import verify
+        for field, value in [('source', {'commit': 'b' * 40, 'dirty': False}),
+                             ('source', {'commit': 'a' * 40, 'dirty': True}),
+                             ('source', None), ('source_at_finish', None), ('production_ready', True),
+                             ('started_at', 'not-a-date'), ('finished_at', '2099-01-01T00:00:00+00:00'),
+                             ('finished_at', '2000-01-01T00:00:00+00:00'),
+                             ('finished_at', '2026-01-01T00:00:00'), ('schema_version', 2),
+                             ('coverage', {})]:
+            report = self.evidence()
+            report[field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                verify(report, 'a' * 40)
+
+    def test_cli_never_echoes_untrusted_evidence(self):
+        import json
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'report.json'
+            path.write_text(json.dumps({'secret': 'fixture-secret-value'}))
+            result = subprocess.run([sys.executable, 'tools/member_validation_report.py',
+                                     str(path), '--commit', 'a' * 40],
+                                    capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 1)
+            self.assertNotIn('fixture-secret-value', result.stdout + result.stderr)
+
+    def test_revision_detects_untracked_files_and_does_not_use_remote(self):
+        from member_validation_report import revision
+        with tempfile.TemporaryDirectory() as temp:
+            subprocess.run(['git', 'init', '-q', temp], check=True)
+            subprocess.run(['git', '-C', temp, '-c', 'user.name=Fixture', '-c',
+                            'user.email=fixture@example.invalid', 'commit', '-q',
+                            '--allow-empty', '-m', 'fixture'], check=True)
+            self.assertFalse(revision(temp)['dirty'])
+            (Path(temp) / 'untracked').write_text('fixture')
+            self.assertTrue(revision(temp)['dirty'])
+            self.assertEqual(len(revision(temp)['commit']), 40)
+
+
 if __name__ == '__main__':
     unittest.main()

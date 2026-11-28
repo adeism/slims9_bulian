@@ -955,3 +955,17 @@ NOT an active .github workflow. Push feature changes/docs normally. New MySQL
 scope assertions remain unexecuted; an authorized maintainer must install the
 template before expecting check runs. No permissions or branch protection
 settings were changed, and no passing CI result is claimed.
+
+## ADR-0049: revision-bound disposable validation evidence
+
+Record schema, start/finish timestamps and Git revision/dirty state at both ends
+of the disposable suite. Add an offline fail-closed report verifier: require
+complete ordered core stages, requested optional stages, clean expected commit,
+no unsupported production/TLS/full-PHP claims, and bounded evidence age. Lock
+Cargo resolution in the runner. Keep JSON outside the checkout. Template CI
+checks this evidence after the suite, but is not installed or active.
+
+This checks consistency, not authenticity or production acceptance; reports can
+be forged and source changes reverted mid-run escape detection. Old reports
+must be regenerated. Database-free safety tests (11) passed; real MySQL scope
+acceptance is still pending. No schema, runtime or production-write change.

@@ -582,3 +582,12 @@ Catatan CI: push workflow ditolak karena GitHub App tidak memiliki izin
 `workflows`. Template disimpan di docs/ci/rust-validation.yml dan BELUM AKTIF.
 Maintainer berizin perlu memasangnya ke .github/workflows/rust-validation.yml;
 tidak ada klaim uji MySQL baru/CI lulus. Perubahan fitur tetap dapat di-push.
+
+### ADR-0049 — bukti validasi terikat revisi
+
+Runner mencatat revisi/status dirty sebelum dan sesudah, timestamp dan versi
+skema laporan. Verifier offline menolak tahapan hilang/gagal/duplikat/terbalik,
+revisi berbeda, tree kotor, laporan kedaluwarsa dan klaim cakupan yang tidak
+didukung. Sebelas tes safety lulus. Ini pemeriksaan konsistensi, bukan tanda
+tangan atau persetujuan produksi. Template CI tetap nonaktif; MySQL/Rust/PHP
+belum diuji ulang pada tahap ini. Tidak ada perubahan schema/writer produksi.

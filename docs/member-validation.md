@@ -119,3 +119,30 @@ template is stored under docs only; install it at
 `.github/workflows/rust-validation.yml` using an identity with workflows
 permission. No new CI/MySQL scope execution has occurred; do not interpret
 this template as an active or passing check.
+
+## Revision-bound disposable-suite evidence (ADR-0049)
+
+The runner now records schema version, UTC start/finish timestamps and local
+Git revision/dirty state both before and after validation. Builds/tests use
+`--offline --locked`. Store the optional report **outside** the checkout so it
+does not itself make the tree dirty. Run from a clean committed checkout, then:
+
+```sh
+python3 tools/member_validation_report.py /tmp/member-validation.json \
+  --commit "$(git rev-parse HEAD)"
+```
+
+The verifier requires every core stage exactly once in order, successful stage
+statuses, explicit isolated-PHP coverage (and corresponding stages when enabled),
+a clean matching revision at both ends, and UTC-offset timestamps no more than
+24 hours old. `--max-age-hours` can select a positive limit up to 168 hours.
+Old-schema reports are deliberately rejected; regenerate rather than hand-edit.
+The prepared CI template invokes this verifier, but remains inactive because
+workflow permission is unavailable.
+
+This is a consistency check on a locally generated JSON report, **not** a signed
+attestation, proof against tampering, deployed proxy/PHP parity, or production
+approval. It cannot detect a file changed and restored during the run. The
+existing full-PHP/MySQL and TLS coverage flags remain false. Eleven database-free
+runner/evidence safety tests pass; no new MySQL, Rust, PHP or HTTP execution was
+performed for ADR-0049 in the restored sandbox (toolchains/services absent).

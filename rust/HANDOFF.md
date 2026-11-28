@@ -568,3 +568,13 @@ Push was refused for .github/workflows by GitHub App permission. CI template
 is now in docs/ci/rust-validation.yml only (inactive), to be installed by an
 authorized maintainer. Feature code/docs can be pushed; no new remote CI/MySQL
 result exists. Do not mark scope SQL acceptance complete.
+
+### Revision-bound test evidence (ADR-0049)
+
+`tools/member_validation_report.py` rejects incomplete, failed, stale, wrong-
+revision or dirty-tree reports. Runner stamps source before/after and times,
+uses locked offline Cargo; inactive CI template invokes verifier. Save reports
+outside the tree and run from clean commits. Consistency only, not signed
+attestation or production approval. Eleven runner/evidence safety tests passed;
+no new Rust/MySQL/PHP/HTTP execution in this restored sandbox. CI permissions,
+real SQL scope execution and all production blockers remain unresolved.

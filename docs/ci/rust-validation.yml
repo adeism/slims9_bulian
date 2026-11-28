@@ -89,6 +89,9 @@ jobs:
         run: |
           /tmp/member-ci/bin/python tools/test_member_suite.py \
             --php-command php --report /tmp/member-validation.json
+      - name: Verify complete revision-bound evidence
+        run: |
+          python3 tools/member_validation_report.py /tmp/member-validation.json --commit "$GITHUB_SHA"
       - name: Preserve credential-free stage results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
