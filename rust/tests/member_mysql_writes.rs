@@ -142,6 +142,13 @@ fn mysql_member_writes_are_scoped_idempotent_and_password_cas_is_atomic() {
     let bulk = (910000..=911000).map(|id| format!("({id},'REPORT-LIMIT','M001','2099-01-01','2099-01-02',1,0)")).collect::<Vec<_>>().join(",");
     conn.query(&format!("INSERT INTO loan (loan_id,item_code,member_id,loan_date,due_date,is_lent,is_return) VALUES {bulk}")).unwrap();
     assert_eq!(state.store.member_loan_report("M001").unwrap().len(), 1001);
+    use slims9::models::MemberLoanReportScope;
+    assert_eq!(state.store.member_loan_report_scoped("M001", MemberLoanReportScope::Current).unwrap().len(), 1001);
+    assert_eq!(state.store.member_loan_report_scoped("M001", MemberLoanReportScope::History).unwrap().len(), 2);
+    let history_download = get(&state, "/index.php?p=download_loan_history", Some(&a));
+    assert_eq!(history_download.status, 200); // combined/current overflow must not hide history
+    assert!(!text(&history_download).contains("REPORT-LIMIT"));
+    assert_eq!(get(&state, "/index.php?p=download_current_loan", Some(&a)).status, 413);
     for path in ["/member?sec=loan_report", "/member?sec=loan_report&format=csv"] {
         let oversized = get(&state, path, Some(&a));
         assert_eq!(oversized.status, 413);

@@ -202,6 +202,13 @@ pub struct MemberLoan {
 
 /// Combined report ceiling; backends return one extra row as an overflow sentinel.
 pub const MAX_MEMBER_REPORT_LOANS: usize = 1000;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MemberLoanReportScope { #[default] All, Current, History }
+impl MemberLoanReportScope {
+    pub fn includes(self, returned: bool) -> bool { match self { Self::All => true, Self::Current => !returned, Self::History => returned } }
+    pub fn query_value(self) -> &'static str { match self { Self::All => "all", Self::Current => "current", Self::History => "history" } }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MemberLoanReportRow {
     pub returned: bool,

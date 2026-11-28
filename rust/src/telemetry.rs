@@ -30,7 +30,7 @@ pub fn config_error(error: &crate::runtime::ConfigError) {
 }
 fn route_class(request: &Request) -> &'static str {
     let path = request.path.trim_end_matches('/');
-    if path == "/member" || (path == "/index.php" && matches!(request.query("p"), Some("member" | "download_member_loan_report"))) { "member" }
+    if path == "/member" || (path == "/index.php" && matches!(request.query("p"), Some("member" | "download_member_loan_report" | "download_current_loan" | "download_loan_history"))) { "member" }
     else if path == "/healthz" { "health" }
     else if path == "/api" || path.starts_with("/api/") { "api" }
     else if path.starts_with("/static/") { "static" }

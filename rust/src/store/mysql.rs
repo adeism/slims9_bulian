@@ -1115,10 +1115,15 @@ impl Store for MySqlStore {
     }
 
     fn member_loan_report(&self, member_id: &str) -> StoreResult<Vec<MemberLoanReportRow>> {
+        self.member_loan_report_scoped(member_id, MemberLoanReportScope::All)
+    }
+
+    fn member_loan_report_scoped(&self, member_id: &str, scope: MemberLoanReportScope) -> StoreResult<Vec<MemberLoanReportRow>> {
         let id = member_id.as_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let scope_sql = match scope { MemberLoanReportScope::All => "", MemberLoanReportScope::Current => " AND l.is_return=0", MemberLoanReportScope::History => " AND l.is_return=1" };
         // One SELECT avoids separately paginating active/history across changes.
         // Byte-exact predicates on both joined owner IDs exclude collation aliases.
-        let sql = format!("SELECT l.is_return,l.item_code,b.title,l.loan_date,l.due_date,l.return_date FROM loan AS l INNER JOIN member AS m ON l.member_id=m.member_id LEFT JOIN item AS i ON l.item_code=i.item_code LEFT JOIN biblio AS b ON i.biblio_id=b.biblio_id WHERE BINARY m.member_id=X'{0}' AND BINARY l.member_id=X'{0}' AND l.is_lent=1 AND l.is_return IN (0,1) ORDER BY l.is_return ASC,l.loan_date DESC,l.loan_id DESC LIMIT {1}", id, MAX_MEMBER_REPORT_LOANS + 1);
+        let sql = format!("SELECT l.is_return,l.item_code,b.title,l.loan_date,l.due_date,l.return_date FROM loan AS l INNER JOIN member AS m ON l.member_id=m.member_id LEFT JOIN item AS i ON l.item_code=i.item_code LEFT JOIN biblio AS b ON i.biblio_id=b.biblio_id WHERE BINARY m.member_id=X'{0}' AND BINARY l.member_id=X'{0}' AND l.is_lent=1 AND l.is_return IN (0,1){scope_sql} ORDER BY l.is_return ASC,l.loan_date DESC,l.loan_id DESC LIMIT {1}", id, MAX_MEMBER_REPORT_LOANS + 1);
         self.run(&sql, |rs| (0..rs.rows.len()).map(|row| Ok(MemberLoanReportRow {
             returned: rs.i64(row, "is_return") == Some(1),
             loan: MemberLoan {

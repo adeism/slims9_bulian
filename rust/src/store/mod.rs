@@ -113,6 +113,13 @@ pub trait Store: Send + Sync {
         Err(StoreError::Db("member loan reports unavailable".into()))
     }
 
+    /// Apply scope BEFORE the 1001-row sentinel limit, not after fetching a
+    /// capped combined report. Unsupported backends must fail closed.
+    fn member_loan_report_scoped(&self, member_id: &str, scope: MemberLoanReportScope) -> StoreResult<Vec<MemberLoanReportRow>> {
+        if scope == MemberLoanReportScope::All { self.member_loan_report(member_id) }
+        else { Err(StoreError::Db("scoped member loan reports unavailable".into())) }
+    }
+
     /// Latest 100 existing reservations for a member, no writes enabled.
     /// Callers must authenticate; orphaned catalog references are omitted.
     fn member_reservations(&self, _member_id: &str) -> StoreResult<Vec<DemoReservation>> {

@@ -99,3 +99,23 @@ report spanning 25 loans (beyond one UI page), missing catalog items, owner-case
 aliases, and refusal beyond 1000 loans without partial attachments. Latest full
 regressions: default 73+1; crypt 88+1+24 flow; SQLite 98+1+27 flow. Remaining
 MySQL/live/PHP/safety stages above also pass with this feature.
+
+### Scoped download and PR workflow coverage
+
+The HTTP smoke also exercises current/history HTML and CSV aliases plus HEAD
+suppression. Memory tests prove filtering precedes the overflow sentinel. The
+MySQL destructive suite now asserts small history remains downloadable while
+a current/combined report overflows. Run it with a fresh fixture; adding the
+assertion is not evidence it passed on a particular MySQL version.
+
+The inactive template `docs/ci/rust-validation.yml` is prepared to automate the offline feature
+matrix, safety/native-PHP guard tests and a fresh MySQL 5.7.44 full suite. The
+service uses fixture-only credentials; only credential-free stage JSON is
+uploaded. Read the actual check results on the PR. Rust is pinned to 1.85.1
+for CI (this does not assert the declared minimum Rust version was tested).
+
+The GitHub App cannot create/update workflows (push explicitly rejected). The
+template is stored under docs only; install it at
+`.github/workflows/rust-validation.yml` using an identity with workflows
+permission. No new CI/MySQL scope execution has occurred; do not interpret
+this template as an active or passing check.

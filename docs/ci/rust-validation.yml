@@ -1,0 +1,99 @@
+# TEMPLATE ONLY: not active. Install as .github/workflows/rust-validation.yml
+# using a GitHub identity with workflows permission. No CI has run from this file.
+name: Rust migration validation
+
+on:
+  pull_request:
+    branches: [master]
+    paths: ['rust/**', 'tools/**', 'lib/**', 'index.php', 'admin/modules/circulation/**', '.github/workflows/rust-validation.yml']
+  push:
+    branches: ['arena/41e4c998-slims9-bulian']
+    paths: ['rust/**', 'tools/**', 'lib/**', 'index.php', 'admin/modules/circulation/**', '.github/workflows/rust-validation.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUSTUP_TOOLCHAIN: '1.85.1'
+
+jobs:
+  offline-regression:
+    name: Offline regression (${{ matrix.feature || 'default' }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        feature: ['', 'member-crypt', 'member-sqlite']
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install system libraries and toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcrypt-dev libsqlite3-dev php-cli
+          rustup toolchain install 1.85.1 --profile minimal
+          rustc --version
+      - name: Test without registry downloads
+        env:
+          FEATURE: ${{ matrix.feature }}
+        run: |
+          args=()
+          if [ -n "$FEATURE" ]; then args+=(--features "$FEATURE"); fi
+          cargo test --offline --locked --manifest-path rust/Cargo.toml "${args[@]}"
+      - name: Validate runner safety and isolated PHP ownership guard
+        run: |
+          python3 -m unittest discover -s tools -p test_member_suite_safety.py -v
+          python3 tools/test_member_owner.py
+
+  mysql-member-integration:
+    name: Disposable MySQL member and HTTP integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:5.7.44
+        env:
+          MYSQL_DATABASE: slims_test_ci
+          MYSQL_USER: slims_fixture
+          MYSQL_PASSWORD: fixture-only
+          MYSQL_ROOT_PASSWORD: fixture-root-only
+        ports:
+          - 3337:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent -h 127.0.0.1"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcrypt-dev libsqlite3-dev php-cli python3-venv
+          rustup toolchain install 1.85.1 --profile minimal
+          python3 -m venv /tmp/member-ci
+          /tmp/member-ci/bin/python -m pip install PyMySQL==1.1.2
+      - name: Run fresh-fixture suite (reads and HTTP before destructive writes)
+        env:
+          SLIMS_TEST_SUITE_ALLOW: '1'
+          SLIMS_TEST_MYSQL_URL: mysql://slims_fixture:fixture-only@127.0.0.1:3337/slims_test_ci
+        run: |
+          /tmp/member-ci/bin/python tools/test_member_suite.py \
+            --php-command php --report /tmp/member-validation.json
+      - name: Preserve credential-free stage results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: disposable-member-validation
+          path: /tmp/member-validation.json
+          if-no-files-found: ignore
+          retention-days: 7

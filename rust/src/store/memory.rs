@@ -735,8 +735,12 @@ impl Store for MemoryStore {
     }
 
     fn member_loan_report(&self, member_id: &str) -> StoreResult<Vec<MemberLoanReportRow>> {
+        self.member_loan_report_scoped(member_id, MemberLoanReportScope::All)
+    }
+
+    fn member_loan_report_scoped(&self, member_id: &str, scope: MemberLoanReportScope) -> StoreResult<Vec<MemberLoanReportRow>> {
         if !self.members.iter().any(|m| m.id == member_id) { return Ok(Vec::new()); }
-        let mut loans: Vec<_> = self.loans.iter().filter(|l| l.member_id == member_id && l.is_lent).collect();
+        let mut loans: Vec<_> = self.loans.iter().filter(|l| l.member_id == member_id && l.is_lent && scope.includes(l.is_return)).collect();
         loans.sort_by(|a, b| a.is_return.cmp(&b.is_return).then(b.loan_date.cmp(&a.loan_date)).then(b.id.cmp(&a.id)));
         Ok(loans.into_iter().take(MAX_MEMBER_REPORT_LOANS + 1).map(|l| MemberLoanReportRow {
             returned: l.is_return,
@@ -1119,6 +1123,18 @@ mod tests {
         let ajax = store.detail(8).unwrap().unwrap();
         assert!(!ajax.biblio.items.is_empty());
         assert_eq!(ajax.biblio.items[0].item_code, "B00001");
+    }
+
+    #[test]
+    fn scoped_report_filters_before_combined_overflow_sentinel() {
+        let mut store = store();
+        let source = store.loans.iter().find(|l| l.member_id == "M001" && l.is_return).unwrap().clone();
+        for id in 10000..11100 { let mut loan = source.clone(); loan.id = id; store.loans.push(loan); }
+        assert_eq!(store.member_loan_report("M001").unwrap().len(), MAX_MEMBER_REPORT_LOANS + 1);
+        let current = store.member_loan_report_scoped("M001", MemberLoanReportScope::Current).unwrap();
+        assert_eq!(current.len(), 1);
+        assert!(current.iter().all(|r| !r.returned));
+        assert_eq!(store.member_loan_report_scoped("M001", MemberLoanReportScope::History).unwrap().len(), MAX_MEMBER_REPORT_LOANS + 1);
     }
 
     #[test]

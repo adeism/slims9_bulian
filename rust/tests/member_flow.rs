@@ -984,3 +984,51 @@ fn combined_loan_report_is_authenticated_scoped_read_only_and_has_legacy_alias()
     assert!(body(&revoked).contains("Library Member Login"));
     assert!(!revoked.headers.iter().any(|(key, _)| key == "Content-Disposition"));
 }
+
+#[test]
+fn current_and_history_downloads_are_scoped_authenticated_attachments() {
+    use slims9::models::MemberLoanReportScope;
+    let state = state();
+    let anon = get(&state, "/member", None);
+    let auth = post(&state, &cookie(&anon), &login_payload(&csrf(&anon), "M001", "siti rahma"));
+    let c = cookie(&auth);
+    for (legacy, scope, expected, rejected, count, filename) in [
+        ("download_current_loan", "current", "Current loans (1)", "Returned loans", 1, "current_loan.html"),
+        ("download_loan_history", "history", "Returned loans (2)", "Current loans", 2, "loan_history.html"),
+    ] {
+        let path = format!("/index.php?p={legacy}");
+        let anonymous = get(&state, &path, None);
+        assert!(body(&anonymous).contains("Library Member Login"));
+        assert!(!anonymous.headers.iter().any(|(k, _)| k == "Content-Disposition"));
+        let response = get(&state, &path, Some(&c));
+        assert_eq!(response.status, 200);
+        assert!(header(&response, "Content-Disposition").contains(filename));
+        assert!(header(&response, "Content-Type").starts_with("text/html"));
+        assert!(header(&response, "Cache-Control").contains("no-store"));
+        assert!(body(&response).contains(expected));
+        assert!(!body(&response).contains(rejected));
+        assert!(body(&response).contains(&format!("scope={scope}&amp;format=csv")));
+        let csv = get(&state, &format!("{path}&format=csv"), Some(&c));
+        assert_eq!(csv.status, 200);
+        assert_eq!(body(&csv).lines().count(), count + 1);
+        let inline = get(&state, &format!("/member?sec=loan_report&scope={scope}"), Some(&c));
+        assert_eq!(inline.status, 200);
+        assert!(body(&inline).contains(expected));
+        assert!(!inline.headers.iter().any(|(k, _)| k == "Content-Disposition"));
+        for extra in ["scope=all", "page=1", "sec=my_account", "memberID=M002", "format=csv&format=html"] {
+            assert_eq!(get(&state, &format!("{path}&{extra}"), Some(&c)).status, 400);
+        }
+        let mut post = Request::new("POST", &path); post.headers.push(("Cookie".into(), c.clone()));
+        assert_eq!(state.handle(&post).status, 405);
+    }
+    for scope in [MemberLoanReportScope::Current, MemberLoanReportScope::History] {
+        assert!(state.store.member_loan_report_scoped("M001", scope).unwrap().iter().all(|r| scope.includes(r.returned)));
+        assert!(state.store.member_loan_report_scoped("m001", scope).unwrap().is_empty());
+    }
+    for query in ["scope=invalid", "scope=", "scope=current&scope=history"] {
+        assert_eq!(get(&state, &format!("/member?sec=loan_report&{query}"), Some(&c)).status, 400);
+    }
+    let t = csrf(&get(&state, "/member", Some(&c)));
+    post(&state, &c, &format!("action=logout&csrf_token={t}"));
+    assert!(body(&get(&state, "/index.php?p=download_loan_history", Some(&c))).contains("Library Member Login"));
+}

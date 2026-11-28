@@ -918,3 +918,40 @@ binary tests; crypt 92+1+24 flows+2 binary; SQLite 102+1+27 flows+2 binary;
 MySQL reads 3/3, live member/OPAC 23/23 applicable, destructive private-SQLite
 writes and six runner safety tests. No schema change, production enablement,
 framework/TLS adoption or claim of completing the entire foundation proposal.
+
+## ADR-0048 — Port single-section downloads and add PR validation
+
+Add scoped Store reads (All/Current/History) for member reports. Scope filtering
+must occur before applying the 1001 sentinel; do not filter a capped combined
+report in the renderer. Unsupported stores fail closed for scoped requests.
+Renderer rejects a backend scope mismatch, shares CSV formula protections,
+uses fixed download filenames and refuses oversize without a partial attachment.
+
+GET/HEAD legacy current/history routes return HTML attachments and support
+explicit CSV. Canonical report scope defaults All; format=html downloads HTML.
+Conflicting/duplicate selectors and owner overrides fail, POST is never replayed,
+and revoked/anonymous sessions get sign-in without a download header. All member
+privacy/security policies remain. Telemetry classifies all three aliases as
+member requests. These are functional HTML/CSV replacements, not byte parity.
+
+Prepare a GitHub Actions workflow template: offline feature matrix, runner safety, native PHP
+ownership guard and a disposable MySQL 5.7.44 service/full runner with redacted
+JSON artifact. Pin external actions, read-only repository permission, no live
+credentials, bounded job times. This is test-only and never deploys. Workflow
+presence/syntax checks do not themselves prove CI passed.
+
+Local validation used a temporary restored Rust 1.92 nightly toolchain outside
+the repository (npm archive integrity verified); current sandbox lost the prior
+toolchain/MySQL server. Default 78+1+2 binary, crypt 94+1+25 flow+2 binary,
+SQLite 104+1+28 flow+2 binary, six runner safety tests, live memory/private-SQLite
+member HTTP (HTML/CSV/HEAD aliases) and OPAC gate 23/23 applicable pass. New
+MySQL scope/overflow assertions are added but not claimed run locally. YAML
+structure and pinned action references checked; actionlint download was blocked.
+CI uses Rust 1.85.1; results will be recorded separately after execution.
+
+CI installation blocker: GitHub rejected the push because this App lacks
+`workflows` permission. Preserve the template as docs/ci/rust-validation.yml,
+NOT an active .github workflow. Push feature changes/docs normally. New MySQL
+scope assertions remain unexecuted; an authorized maintainer must install the
+template before expecting check runs. No permissions or branch protection
+settings were changed, and no passing CI result is claimed.

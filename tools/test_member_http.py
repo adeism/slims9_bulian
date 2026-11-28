@@ -86,6 +86,19 @@ def main():
             base + '/member?sec=loan_report', method='HEAD'), timeout=20) as head:
         assert head.status == 200 and head.read() == b''
     assert request(first, '/member?sec=loan_report&memberID=M002')[0] == 400
+    for legacy, label, excluded, count in [
+            ('download_current_loan', 'Current loans (1)', 'Returned loans', 1),
+            ('download_loan_history', 'Returned loans (2)', 'Current loans', 2)]:
+        path = '/index.php?p=' + legacy
+        status, headers, report, _ = request(first, path)
+        assert status == 200 and label in report and excluded not in report
+        assert headers['Content-Disposition'].startswith('attachment;')
+        status, _, scoped_csv, _ = request(first, path + '&format=csv')
+        assert status == 200 and len(list(csv.reader(io.StringIO(scoped_csv)))) == count + 1
+        with first.open(Request(base + path, method='HEAD'), timeout=20) as head:
+            assert head.status == 200 and head.read() == b''
+            assert 'attachment;' in head.headers['Content-Disposition']
+        assert request(first, path + '&scope=all')[0] == 400
     status, _, html, _ = request(first, '/member?sec=reservation_list')
     assert status == 200 and 'My Stored Reservations' in html and 'Read-only' in html
     status, _, html, _ = request(first, '/member?sec=my_account')

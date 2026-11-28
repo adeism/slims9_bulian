@@ -83,7 +83,7 @@ impl AppState {
         let path = if path.is_empty() { "/" } else { path };
 
         #[cfg(feature = "member-crypt")]
-        if self.config.member_enabled && (path == "/member" || (path == "/index.php" && matches!(request.query("p"), Some("member" | "download_member_loan_report")))) {
+        if self.config.member_enabled && (path == "/member" || (path == "/index.php" && matches!(request.query("p"), Some("member" | "download_member_loan_report" | "download_current_loan" | "download_loan_history")))) {
             return crate::member::handle(request, self);
         }
 

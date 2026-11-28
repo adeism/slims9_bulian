@@ -60,8 +60,8 @@ absolute exclusive database ownership or rely solely on the environment flag.
    Set the PHP ownership gate everywhere and verify missed routes fail closed.
 7. Configure and verify reverse-proxy routing for `/member` and legacy member
    URLs, including POST. Legacy downloads are HTML attachments, not PDFs. The combined report has a
-   bounded Rust HTML/CSV replacement (ADR-0046); separately route/retire the two
-   older single-section download URLs. No automatic PHP session conversion or
+   bounded Rust HTML/CSV replacement (ADR-0046); route all three member download URLs to Rust (ADR-0048 adds the two
+   single-section aliases). No automatic PHP session conversion or
    POST replay is supported.
 8. Verify login, credential changes, bookmark isolation, reservation policy and
    recovery, logout/revocation, CSV and monitoring on the intended deployment.
@@ -129,6 +129,6 @@ rather than allow the old PHP include through the ownership gate. Reject/retire
 legacy POSTs; never redirect/replay them as authenticated actions. Rust sessions
 are required. The PHP source emits HTML attachments (earlier PDF references
 were inaccurate); Rust serves printable inline HTML plus CSV with documented
-size ceilings and different markup/header behavior. Current/history-only PHP
-download routes still need separate routing/retirement decisions. Passing the
+size ceilings and different markup/header behavior. Current/history-only PHP download aliases now have scoped Rust replacements
+(ADR-0048); route those requests to Rust as well, with GET/HEAD only. Passing the
 report checks does not enable production writes or full PHP parity.

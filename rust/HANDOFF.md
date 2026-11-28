@@ -545,3 +545,26 @@ Latest full disposable MySQL suite: default 77+1+2 binary; crypt 92+1+24 flow+2
 binary; SQLite 102+1+27 flow+2 binary. Reads 3/3, live member/report/CSV/OPAC
 23/23 applicable, destructive private SQLite writes and six safety tests pass.
 Optional PHP suites not rerun in this increment (PHP unchanged).
+
+### Single-section downloads + PR CI (ADR-0048)
+
+Current/history PHP download aliases now map to scoped Rust HTML/CSV reports,
+GET/HEAD only, owner-bound and no-store. Canonical scope=all/current/history,
+format=html attachment or csv. Scope precedes SQL/memory sentinel, never filter
+a capped combined report. Renderer refuses mismatches. Existing report caps,
+credential refresh and no-replay rules remain. These are functional replacements
+with different markup, not deployment parity/approval.
+
+Prepared workflow template for feature matrix + isolated PHP guard + disposable MySQL full
+suite. No deployment/secrets; read-only permissions and pinned actions. Check
+remote runs before treating CI as passed. Local MySQL server from prior sessions
+is gone; new SQL integration assertions were not run locally. Live memory HTTP
+and OPAC gate pass, as do default 78+1+2 binary, crypt 94+1+25 flow+2 binary,
+SQLite 104+1+28 flow+2 binary and six runner safety tests. Temporary compiler
+restored from integrity-verified npm archives is outside Git; local 1.92 nightly,
+CI targets 1.85.1. No production change, framework dependency adoption or merge.
+
+Push was refused for .github/workflows by GitHub App permission. CI template
+is now in docs/ci/rust-validation.yml only (inactive), to be installed by an
+authorized maintainer. Feature code/docs can be pushed; no new remote CI/MySQL
+result exists. Do not mark scope SQL acceptance complete.

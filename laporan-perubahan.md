@@ -564,3 +564,21 @@ Validasi akhir ADR-0040: default 60+1, member-crypt 74+1+22 flow, SQLite
   SQLx, Askama/MiniJinja dan tracing BELUM dipasang/diimplementasikan. Build
   offline tetap berjalan; rencana adopsi dan detail hasil di
   `docs/backend-foundation.md`. Usulan fondasi no. 3 belum seluruhnya selesai.
+
+### Dua unduhan anggota dan pemeriksaan PR — ADR-0048
+
+- Mem-port unduhan pinjaman aktif dan riwayat ke alias GET/HEAD Rust, berupa
+  HTML attachment serta CSV. Canonical scope=all/current/history didukung.
+- Filter scope dilakukan sebelum limit; riwayat kecil tidak ditolak karena
+  jumlah pinjaman aktif besar. Renderer menolak scope salah, tidak memotong data.
+- Menyiapkan template workflow PR: matriks fitur offline, safety runner/guard PHP native,
+  serta suite MySQL 5.7.44 terisolasi. Tidak ada deployment atau DB produksi.
+- Lulus lokal: default 78+1+2 binary; crypt 94+1+25 flow+2 binary; SQLite
+  104+1+28 flow+2 binary; safety 6; HTTP memory/SQLite dengan alias HTML/CSV/HEAD;
+  OPAC 23/23 applicable. Server MySQL lama hilang; uji SQL baru belum dijalankan
+  lokal, hasil CI harus diverifikasi terpisah. Bukan klaim siap produksi.
+
+Catatan CI: push workflow ditolak karena GitHub App tidak memiliki izin
+`workflows`. Template disimpan di docs/ci/rust-validation.yml dan BELUM AKTIF.
+Maintainer berizin perlu memasangnya ke .github/workflows/rust-validation.yml;
+tidak ada klaim uji MySQL baru/CI lulus. Perubahan fitur tetap dapat di-push.

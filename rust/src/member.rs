@@ -285,19 +285,22 @@ fn form_value<'a>(form: &'a [(String, String)], key: &str) -> Option<&'a str> {
 }
 
 pub fn handle(request: &Request, state: &AppState) -> Response {
-    if request.path.trim_end_matches('/') == "/index.php" && request.query("p") == Some("download_member_loan_report") {
-        if request.query.iter().filter(|(key, _)| key == "p").count() != 1 || request.query.iter().any(|(key, _)| matches!(key.as_str(), "sec" | "page")) {
+    if request.path.trim_end_matches('/') == "/index.php" && matches!(request.query("p"), Some("download_member_loan_report" | "download_current_loan" | "download_loan_history")) {
+        if request.query.iter().filter(|(key, _)| key == "p").count() != 1 || request.query.iter().any(|(key, _)| matches!(key.as_str(), "sec" | "page" | "scope")) {
             return private(Response::text(400, "Invalid legacy report selector"));
         }
         if !matches!(request.method.as_str(), "GET" | "HEAD") { return private(Response::text(405, "Loan report requires GET or HEAD")); }
+        let scope = match request.query("p") { Some("download_current_loan") => "current", Some("download_loan_history") => "history", _ => "all" };
         let mut canonical = request.clone();
         canonical.query.retain(|(key, _)| key != "p");
         canonical.query.push(("sec".into(), "loan_report".into()));
+        canonical.query.push(("scope".into(), scope.into()));
+        if scope != "all" && request.query("format").is_none() { canonical.query.push(("format".into(), "html".into())); }
         return handle(&canonical, state);
     }
     // Reject ambiguous selectors rather than relying on first-value semantics
     // that can differ from a proxy or PHP's last-value handling.
-    for key in ["sec", "page", "format", "biblio_id"] {
+    for key in ["sec", "page", "format", "biblio_id", "scope"] {
         if request.query.iter().filter(|(name, _)| name == key).count() > 1 {
             return private(Response::text(400, "Duplicate member parameter"));
         }
@@ -332,17 +335,23 @@ pub fn handle(request: &Request, state: &AppState) -> Response {
                     } else { 1 };
                     if section == "loan_report" && session.member.is_some() {
                         if request.query.iter().any(|(key, _)| matches!(key.as_str(), "page" | "biblio_id" | "memberID" | "member_id")) ||
-                            request.query("format").map_or(false, |format| format != "csv") {
+                            request.query("format").map_or(false, |format| !matches!(format, "csv" | "html")) {
                             return private(Response::text(400, "Invalid report selector"));
                         }
+                        let scope = match request.query_or("scope", "all") {
+                            "all" => crate::models::MemberLoanReportScope::All,
+                            "current" => crate::models::MemberLoanReportScope::Current,
+                            "history" => crate::models::MemberLoanReportScope::History,
+                            _ => return private(Response::text(400, "Invalid report scope")),
+                        };
                         let member = session.member.as_ref().expect("authenticated member");
-                        let rows = match state.store.member_loan_report(&member.id) { Ok(rows) => rows, Err(_) => return unavailable() };
+                        let rows = match state.store.member_loan_report_scoped(&member.id, scope) { Ok(rows) => rows, Err(_) => return unavailable() };
                         let profile = match state.store.member_profile(&member.id) {
                             Ok(Some(profile)) if profile.id == member.id => profile,
                             Ok(_) => return revoke_response(cookie(request).unwrap(), &session.csrf, state),
                             Err(_) => return unavailable(),
                         };
-                        let response = crate::member_report::render(&rows, &profile, &state.config.library_name, request.query("format") == Some("csv"));
+                        let response = crate::member_report::render_scoped(&rows, &profile, &state.config.library_name, request.query("format") == Some("csv"), scope, request.query("format") == Some("html"));
                         // Discard a report if a password reset/deletion became
                         // visible while its data was being read.
                         return match refresh_member(&mut session, state) {
@@ -811,7 +820,8 @@ fn render_with_target(state: &AppState, session: &Session, section: &str, error:
             }
             let previous = if page_number > 1 { format!("<a href=\"/member?sec={}&amp;page={}\">Previous</a> ", section, page_number - 1) } else { String::new() };
             let next = if loans.len() > 20 && page_number < 5001 { format!("<a href=\"/member?sec={}&amp;page={}\">Next</a>", section, page_number + 1) } else { String::new() };
-            let download = format!("<p><a href=\"/member?sec={}&amp;page={}&amp;format=csv\">Download this page (CSV)</a> — up to 20 loans. <a href=\"/member?sec=loan_report\">Combined printable report / CSV</a>.</p>", section, page_number);
+            let report_scope = if returned { "history" } else { "current" };
+            let download = format!("<p><a href=\"/member?sec={}&amp;page={}&amp;format=csv\">Download this page (CSV)</a> — up to 20 loans. <a href=\"/member?sec=loan_report&amp;scope={report_scope}&amp;format=html\">Download complete section (HTML, subject to report limits)</a> · <a href=\"/member?sec=loan_report\">Combined printable report / CSV</a>.</p>", section, page_number);
             let limit = if loans.len() > 20 && page_number == 5001 { "<p>Navigation is limited to the first 100,020 loans.</p>" } else { "" };
             format!("<h2>{}</h2><table class=\"copies\"><thead><tr><th>Item Code</th><th>Title</th><th>Loan Date</th><th>{}</th></tr></thead><tbody>{}</tbody></table><p>Page {} &nbsp; {}{}</p>{download}{}",
                 if returned { "My Loan History" } else { "My Current Loan (dates and lateness in UTC; not a fine calculation)" }, if returned { "Return Date" } else { "Due Date" }, rows, page_number, previous, next, limit)

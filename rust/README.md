@@ -357,8 +357,7 @@ profile and both current/returned loans; append `&format=csv` for a combined
 CSV. `/index.php?p=download_member_loan_report` is a GET/HEAD-only alias when
 requests are routed to Rust and experimental member mode is on. This replaces
 the feature of PHP's combined HTML download; it is not identical markup or a
-server-generated PDF. The two single-section legacy download routes are not
-implemented. PHP sessions are never accepted by Rust.
+server-generated PDF. The single-section legacy downloads are now supported as described below (ADR-0048). PHP sessions are never accepted by Rust.
 
 Reports use one bounded loan read (profile/credential checks are separate),
 current loans first then newest dates/IDs. Over 1000 loans or 512 KiB raw report
@@ -383,3 +382,26 @@ Framework migration is still pending: this build does not use Axum/Tokio, SQLx,
 Askama/MiniJinja or tracing. Crates.io index/downloads were inaccessible during
 this implementation; no unbuildable dependency was added. Typed startup, limits
 and telemetry are implemented/tested independently, preserving offline builds.
+
+### Current/history download scripts (ADR-0048)
+
+All three PHP member download features now have bounded Rust replacements.
+`/index.php?p=download_current_loan` and `?p=download_loan_history` return private
+HTML attachments (`current_loan.html` / `loan_history.html`) for the signed-in
+Rust member. Append `&format=csv` for scoped CSV. POST, forged owner selectors,
+conflicting scope/section/page and duplicate selectors are refused.
+
+Canonical views: `/member?sec=loan_report&scope=current` or `scope=history`;
+add `&format=html` to download HTML, or `&format=csv`. Scope defaults to `all`.
+Filtering happens in the Store read **before** the 1001-row sentinel. Each scope
+has its own 1000-loan/size ceiling, so a large active list does not suppress a
+small history download. No silent truncation or PHP session conversion.
+Markup, profile and CSV formats differ from PHP; this is functional replacement,
+not full source-output parity or production approval.
+
+`docs/ci/rust-validation.yml` prepares PR regression jobs and a disposable
+MySQL 5.7.44/live HTTP suite. It is a TEMPLATE, not an active workflow: the current
+GitHub App was denied `workflows` permission. An authorized maintainer must install
+it as `.github/workflows/rust-validation.yml`. No new CI result is available. It uses read-only repository permissions and a
+fixture-only service, never a deployment database. CI results must be checked;
+workflow presence alone is not a passing test result.
