@@ -1,0 +1,505 @@
+{
+  "suite": "SLiMS 9 Bulian behavior gate",
+  "source": "api/v1 PHP controllers; expected values recorded against the memory demo store",
+  "notes": "Paths may contain {today} and {year}, substituted with the local date at replay time. A case may carry \"backends\": [\"memory\"], [\"mysql\"] or both; tools/gate.py asks /healthz which backend it is talking to and skips the cases that do not apply, so the same recording replays against either backend.",
+  "cases": [
+    {
+      "name": "api-home",
+      "method": "GET",
+      "path": "/api/",
+      "expect": {
+        "status": 200,
+        "json": {
+          "error": false,
+          "message": "Sugeng rawuh is selamat datang."
+        }
+      }
+    },
+    {
+      "name": "api-biblio-popular",
+      "method": "GET",
+      "path": "/api/biblio/popular",
+      "expect": {
+        "status": 200,
+        "json": [
+          {
+            "biblio_id": "2",
+            "title": "Linux In a Nutshell",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Flinux_in_a_nutshell.jpg&width=120",
+            "total": "5"
+          },
+          {
+            "biblio_id": "4",
+            "title": "Cathedral and the Bazaar: Musings on Linux and Open Source by an Accidental Revolutionary",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fcathedral_bazaar.jpg&width=120",
+            "total": "2"
+          },
+          {
+            "biblio_id": "6",
+            "title": "PostgreSQL : a comprehensive guide to building, programming, and administering PostgreSQL databases",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fpostgresql.jpg&width=120",
+            "total": "1"
+          },
+          {
+            "biblio_id": "8",
+            "title": "Ajax : creating Web pages with asynchronous JavaScript and XML",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fajax.jpg&width=120",
+            "total": "1"
+          },
+          {
+            "biblio_id": "12",
+            "title": "Corruption and development",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fcorruption_development.jpg&width=120",
+            "total": "1"
+          },
+          {
+            "biblio_id": "13",
+            "title": "Corruption and development : the anti-corruption campaigns",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fcorruption_development_anti_campaign.jpg&width=120",
+            "total": "1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "api-biblio-latest",
+      "method": "GET",
+      "path": "/api/biblio/latest",
+      "expect": {
+        "status": 200,
+        "json": [
+          {
+            "biblio_id": "6",
+            "title": "PostgreSQL : a comprehensive guide to building, programming, and administering PostgreSQL databases",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fpostgresql.jpg&width=120"
+          },
+          {
+            "biblio_id": "8",
+            "title": "Ajax : creating Web pages with asynchronous JavaScript and XML",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fajax.jpg&width=120"
+          },
+          {
+            "biblio_id": "7",
+            "title": "Web application architecture : principles, protocols, and practices",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fwebapp_arch.jpg&width=120"
+          },
+          {
+            "biblio_id": "11",
+            "title": "Information Architecture for the World Wide Web: Designing Large-Scale Web Sites",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Finformation_arch.jpg&width=120"
+          },
+          {
+            "biblio_id": "5",
+            "title": "Producing open source software : how to run a successful free software project",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fproducing_oss.jpg&width=120"
+          },
+          {
+            "biblio_id": "10",
+            "title": "Library and Information Center Management",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Flibrary_info_center.JPG&width=120"
+          }
+        ]
+      }
+    },
+    {
+      "name": "api-biblio-gmd-text",
+      "method": "GET",
+      "path": "/api/biblio/gmd/Text",
+      "expect": {
+        "status": 200,
+        "json": [
+          {
+            "biblio_id": "6",
+            "title": "PostgreSQL : a comprehensive guide to building, programming, and administering PostgreSQL databases",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fpostgresql.jpg&width=120",
+            "notes": "PostgreSQL is the world's most advanced open-source database. PostgreSQL is the most comprehensive, in-depth, and easy-to-read guide to this award-winning database. This book starts with a thorough overview of SQL, a description of all PostgreSQL data types, and a complete explanation of PostgreSQL commands."
+          },
+          {
+            "biblio_id": "8",
+            "title": "Ajax : creating Web pages with asynchronous JavaScript and XML",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fajax.jpg&width=120",
+            "notes": "Using Ajax, you can build Web applications with the sophistication and usability of traditional desktop applications and you can do it using standards and open source software. Now, for the first time, there's an easy, example-driven guide to Ajax for every Web and open source developer, regardless of experience."
+          },
+          {
+            "biblio_id": "7",
+            "title": "Web application architecture : principles, protocols, and practices",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdocs%2Fwebapp_arch.jpg&width=120",
+            "notes": "An in-depth examination of the core concepts and general principles of Web application development.\r\nThis book uses examples from specific technologies (e.g., servlet API or XSL), without promoting or endorsing particular platforms or APIs. Such knowledge is critical when designing and debugging complex systems. This conceptual understanding makes it easier to learn new APIs that arise in the rapidly changing Internet environment."
+          }
+        ]
+      }
+    },
+    {
+      "name": "api-biblio-coll-type-textbook",
+      "method": "GET",
+      "path": "/api/biblio/coll_type/Textbook",
+      "expect": {
+        "status": 200,
+        "json": []
+      }
+    },
+    {
+      "name": "api-subject-popular",
+      "method": "GET",
+      "path": "/api/subject/popular",
+      "expect": {
+        "status": 200,
+        "json": [
+          "Linux",
+          "Computer",
+          "Operating System",
+          "Corruption",
+          "Open Source"
+        ]
+      }
+    },
+    {
+      "name": "api-subject-latest",
+      "method": "GET",
+      "path": "/api/subject/latest",
+      "expect": {
+        "status": 200,
+        "json": [
+          "Programming",
+          "Website",
+          "Operating System",
+          "Linux",
+          "Computer"
+        ]
+      }
+    },
+    {
+      "name": "api-member-top",
+      "method": "GET",
+      "path": "/api/member/top",
+      "expect": {
+        "status": 200,
+        "json": [
+          {
+            "name": "Dewi Lestari",
+            "type": "Standard",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdefault%2Fimage.png&width=120",
+            "total": "3",
+            "total_title": 3,
+            "order": 6
+          },
+          {
+            "name": "Siti Rahma",
+            "type": "Standard",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdefault%2Fimage.png&width=120",
+            "total": "3",
+            "total_title": 3,
+            "order": 6
+          },
+          {
+            "name": "Budi Santoso",
+            "type": "Standard",
+            "image": "./lib/minigalnano/createthumb.php?filename=images%2Fdefault%2Fimage.png&width=120",
+            "total": "3",
+            "total_title": 2,
+            "order": 5
+          }
+        ]
+      }
+    },
+    {
+      "name": "api-biblio-total-all",
+      "method": "GET",
+      "path": "/api/biblio/total/all",
+      "expect": {
+        "status": 200,
+        "json": {
+          "data": "15"
+        }
+      }
+    },
+    {
+      "name": "api-item-total-all",
+      "method": "GET",
+      "path": "/api/item/total/all",
+      "expect": {
+        "status": 200,
+        "json": {
+          "data": "10"
+        }
+      }
+    },
+    {
+      "name": "api-item-total-lent",
+      "method": "GET",
+      "path": "/api/item/total/lent",
+      "expect": {
+        "status": 200,
+        "json": {
+          "data": "7"
+        }
+      }
+    },
+    {
+      "name": "api-item-total-available",
+      "method": "GET",
+      "path": "/api/item/total/available",
+      "expect": {
+        "status": 200,
+        "json": {
+          "data": "3"
+        }
+      }
+    },
+    {
+      "name": "api-loan-summary",
+      "method": "GET",
+      "path": "/api/loan/summary",
+      "expect": {
+        "status": 200,
+        "json": {
+          "data": {
+            "total": "12",
+            "new": "7",
+            "return": "5",
+            "extend": "1",
+            "overdue": "2"
+          }
+        }
+      }
+    },
+    {
+      "name": "api-loan-getdate",
+      "method": "GET",
+      "path_template": "/api/loan/getdate/{today}",
+      "expect": {
+        "status": 200,
+        "shape": {
+          "raw": "array",
+          "date": "array",
+          "text": "string"
+        }
+      }
+    },
+    {
+      "name": "api-loan-summary-date",
+      "method": "GET",
+      "path_template": "/api/loan/summary/{today}",
+      "expect": {
+        "status": 200,
+        "shape": {
+          "data": {
+            "loan": "array",
+            "return": "array",
+            "extend": "array"
+          }
+        }
+      }
+    },
+    {
+      "name": "opac-home",
+      "method": "GET",
+      "path": "/",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "Find your next read",
+          "New in the catalog",
+          "/static/opac.css"
+        ]
+      }
+    },
+    {
+      "name": "opac-search",
+      "method": "GET",
+      "path": "/search?q=linux",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "titles",
+          "Linux In a Nutshell",
+          "result-row"
+        ]
+      }
+    },
+    {
+      "name": "opac-detail",
+      "method": "GET",
+      "path": "/biblio/1",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "PHP 5 for dummies",
+          "Availability",
+          "Details"
+        ]
+      }
+    },
+    {
+      "name": "opac-legacy-detail",
+      "method": "GET",
+      "path": "/index.php?p=show_detail&id=1",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "PHP 5 for dummies"
+        ]
+      }
+    },
+    {
+      "name": "opac-legacy-search",
+      "method": "GET",
+      "path": "/index.php?search=search&keywords=linux",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "Linux In a Nutshell"
+        ]
+      }
+    },
+    {
+      "name": "opac-404",
+      "method": "GET",
+      "path": "/biblio/999999",
+      "expect": {
+        "status": 404,
+        "contains": [
+          "Page not found"
+        ]
+      }
+    },
+    {
+      "name": "health",
+      "method": "GET",
+      "path": "/healthz",
+      "expect": {
+        "status": 200,
+        "shape": {
+          "status": "string",
+          "backend": "string",
+          "library": "string"
+        },
+        "contains": [
+          "\"status\":\"ok\""
+        ]
+      }
+    },
+    {
+      "name": "health-memory-backend",
+      "method": "GET",
+      "path": "/healthz",
+      "backends": [
+        "memory"
+      ],
+      "expect": {
+        "status": 200,
+        "json": {
+          "status": "ok",
+          "backend": "memory (install/*.sql + demo circulation)",
+          "library": "SLiMS 9 Bulian"
+        }
+      }
+    },
+    {
+      "name": "health-mysql-backend",
+      "method": "GET",
+      "path": "/healthz",
+      "backends": [
+        "mysql"
+      ],
+      "expect": {
+        "status": 200,
+        "json": {
+          "status": "ok",
+          "backend": "mysql",
+          "library": "SLiMS 9 Bulian"
+        }
+      }
+    },
+    {
+      "name": "opac-news-readonly",
+      "method": "GET",
+      "path": "/news",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "Library News",
+          "Search news"
+        ]
+      }
+    },
+    {
+      "name": "opac-legacy-content-help",
+      "method": "GET",
+      "path": "/index.php?p=help",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "Help On Usage",
+          "Searching"
+        ]
+      }
+    },
+    {
+      "name": "opac-private-content-refused",
+      "method": "GET",
+      "path": "/pages/adminhome",
+      "expect": {
+        "status": 404,
+        "contains": [
+          "Page not found"
+        ]
+      }
+    },
+    {
+      "name": "opac-news-post-refused",
+      "method": "POST",
+      "path": "/index.php?p=news",
+      "expect": {
+        "status": 405,
+        "contains": [
+          "Read-only content"
+        ]
+      }
+    },
+    {
+      "name": "opac-librarians",
+      "method": "GET",
+      "path": "/librarians",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "Profile of our Librarian"
+        ]
+      }
+    },
+    {
+      "name": "opac-legacy-librarians",
+      "method": "GET",
+      "path": "/index.php?p=librarian",
+      "expect": {
+        "status": 200,
+        "contains": [
+          "Profile of our Librarian"
+        ]
+      }
+    },
+    {
+      "name": "opac-librarians-role-override-refused",
+      "method": "GET",
+      "path": "/librarians?user_type=3",
+      "expect": {
+        "status": 400,
+        "contains": [
+          "Invalid directory query"
+        ]
+      }
+    },
+    {
+      "name": "opac-librarians-post-refused",
+      "method": "POST",
+      "path": "/index.php?p=librarian",
+      "expect": {
+        "status": 405,
+        "contains": [
+          "Read-only librarian directory"
+        ]
+      }
+    }
+  ]
+}

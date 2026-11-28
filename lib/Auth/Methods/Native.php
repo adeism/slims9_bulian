@@ -23,6 +23,8 @@ class Native extends Contract
      */
     protected function memberAuthenticate()
     {
+        require_once dirname(__DIR__, 2) . '/member_owner_guard.inc.php';
+        \slims_require_php_member_owner();
         $this->fetchRequest(['memberID', 'memberPassWord']);
         $this->type = parent::MEMBER_LOGIN;
 
@@ -201,6 +203,9 @@ class Native extends Contract
      */
     function setMemberData(): Native
     {
+        // This public helper also writes last_login; guard direct callers.
+        require_once dirname(__DIR__, 2) . '/member_owner_guard.inc.php';
+        \slims_require_php_member_owner();
         $this->data['m_logintime'] = time();
         $this->data['m_is_expired'] = false;
         $this->data['m_mark_biblio'] = array();

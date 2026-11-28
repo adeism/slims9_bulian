@@ -1,0 +1,35 @@
+[package]
+name = "slims9-rust"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Rust rewrite of SLiMS 9 Bulian (Senayan Library Management System) - OPAC + REST API"
+license = "GPL-3.0"
+publish = false
+
+# No external dependencies on purpose: the sandbox that produced this port has no
+# crates.io access, and SLiMS is a self-contained PHP app. Everything below the
+# standard library (HTTP, JSON, MySQL wire protocol, templating) lives in src/.
+# The optional member-crypt feature links to Linux libcrypt; member-sqlite
+# additionally links to the system libsqlite3.so.0.
+[dependencies]
+
+[lib]
+name = "slims9"
+path = "src/lib.rs"
+
+[[bin]]
+name = "slims9"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 2
+debug = false
+lto = false
+codegen-units = 16
+
+[features]
+# Experimental member authentication primitive; requires Linux libxcrypt/libcrypt.
+member-crypt = []
+# Persistent local sessions; Linux libsqlite3.so.0. Experimental only.
+member-sqlite = ["member-crypt"]

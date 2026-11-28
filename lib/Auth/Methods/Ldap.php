@@ -54,6 +54,8 @@ class Ldap extends Native
      */
     protected function memberAuthenticate()
     {
+        require_once dirname(__DIR__, 2) . '/member_owner_guard.inc.php';
+        \slims_require_php_member_owner();
         $this->fetchRequest(['memberID','memberPassWord']);
         $this->type = parent::MEMBER_LOGIN;
 

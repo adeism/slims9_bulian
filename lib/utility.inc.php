@@ -375,6 +375,11 @@ class utility
      **/
     public static function isMemberLogin()
     {
+        require_once __DIR__ . '/member_owner_guard.inc.php';
+        if (!slims_php_member_owner_allowed()) {
+            return false;
+        }
+
         $_logged_in = false;
         $_logged_in = isset($_SESSION['mid']) && isset($_SESSION['m_name']);
         return $_logged_in;

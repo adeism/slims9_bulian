@@ -62,6 +62,8 @@ class member_logon
      * @return  boolean
      */
     protected function ldapLogin() {
+        require_once __DIR__ . '/member_owner_guard.inc.php';
+        slims_require_php_member_owner();
         $ldap_configs = config('auth.member');
         if (!function_exists('ldap_connect')) {
             $this->errors = 'LDAP library is not installed yet!';
@@ -159,6 +161,8 @@ class member_logon
      * @return  boolean
      */
     public function nativeLogin() {
+        require_once __DIR__ . '/member_owner_guard.inc.php';
+        slims_require_php_member_owner();
         /*
         $_sql_member_login = sprintf("SELECT m.member_id, m.member_name, m.inst_name,
             m.member_email, m.expire_date, m.register_date, m.is_pending,
@@ -219,6 +223,8 @@ class member_logon
      * @return  void
      */
     public function valid($obj_db) {
+        require_once __DIR__ . '/member_owner_guard.inc.php';
+        slims_require_php_member_owner();
         global $sysconf;
         $this->obj_db = $obj_db;
         $_check_login = call_user_func(array($this, $this->auth_method.'Login'));

@@ -37,6 +37,12 @@ class Validator
      */
     public function process(string $type):bool
     {
+        // Gate before invoking providers, including public member() overrides.
+        if (strcasecmp($type, 'member') === 0) {
+            require_once dirname(__DIR__) . '/member_owner_guard.inc.php';
+            \slims_require_php_member_owner();
+        }
+
         try {
 
             if (!$this->methodInstance instanceof Contract) throw new Exception('Method ' . get_class($this->methodInstance) . ' is not instance of Auth Contract');

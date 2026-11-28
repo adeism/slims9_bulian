@@ -28,6 +28,15 @@ define('INDEX_AUTH', '1');
 // flag for public area
 define('PUBLIC_AREA', 'public_area');
 
+// Fail closed before bootstrapping legacy member routes during opt-in cutover.
+$member_route = $_GET['p'] ?? '';
+if (is_string($member_route) && in_array($member_route, [
+    'member', 'download_current_loan', 'download_loan_history', 'download_member_loan_report'
+], true)) {
+    require_once __DIR__ . '/lib/member_owner_guard.inc.php';
+    slims_require_php_member_owner();
+}
+
 // required file
 require 'sysconfig.inc.php';
 
