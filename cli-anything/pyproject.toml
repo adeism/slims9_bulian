@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-anything-slims"
+version = "1.0.0"
+description = "CLI-Anything harness for SLiMS 9 Bulian: an agent-native CLI over a real SLiMS backend"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "SLiMS Bulian contributors" }]
+keywords = ["slims", "library", "cli-anything", "agent"]
+dependencies = ["click>=8.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+cli-anything-slims = "cli_anything.slims.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cli_anything*"]
+
+[tool.setuptools.package-data]
+"cli_anything.slims" = ["skills/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cli_anything"]

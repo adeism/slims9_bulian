@@ -1,0 +1,955 @@
+# Chatbot plugin
+
+A question-and-answer assistant for SLiMS 9 Bulian, built **on top of the
+CLI-Anything service** — the same class behind `php index.php clianything:*`
+and the HTTP bridge. The chat layer owns no SQL and no circulation rule: it
+routes a message to a command and renders the answer. The service itself is
+bundled (byte-for-byte) so a chatbot-only install works, but it is never a
+second implementation.
+
+If you are deciding whether to install it, read
+[Before you install](#before-you-install-impact-benefits-risks) first: what it
+adds, what it does not touch, what you gain, and what to watch.
+
+Because of that, the three guards you already configured keep working:
+
+| Guard | Where it lives | What the chat inherits |
+| --- | --- | --- |
+| `allow_write` | `config/cli_anything.php` | a closed gate means the chat can only *plan* a transaction |
+| `allow_bulk` + automatic backup | CLI-Anything | multi-item checkout still takes a dump first |
+| audit trail | `system_log` (`location = CLI-Anything`) | every commit is recorded, now with the real staff/member id |
+
+## Before you install: impact, benefits, risks
+
+### What gets added
+
+| Path | Kind | Why |
+| --- | --- | --- |
+| `plugins/chatbot/` | new directory | the plugin: two pages, assets, support classes, bundled service copy, tests |
+| `config/chatbot.php` | new file (copied from the sample) | switches, role gates, search ranking, webhook |
+| `config/cli_anything.php` | optional | already part of CLI-Anything; only needed to allow writes |
+| `SB files/chatbot/` | created at runtime, only if the webhook is on | per-sender pending actions and counters |
+| `system_log` | new rows | one per committed write, through the existing audit path |
+| `biblio`, `item`, `member`, `loan`, `fines` | read; written only by gated circulation | no new tables, no new columns |
+
+Nothing else. No file in `admin/`, `lib/`, `sysconfig.inc.php` or `index.php` is
+edited, and the plugin never runs `ALTER TABLE`: an optional FULLTEXT index is
+*detected* if you added one yourself, never created.
+
+### What appears in the UI
+
+* OPAC menu **Chatbot** (`index.php?p=chatbot`) — visible to guests and members.
+* **System → Chatbot** in the admin area — staff only, behind the normal session
+  check.
+* `POST index.php?p=api/chatbot/v1/message` — **only** when `channel.enabled` is
+  true *and* `channel.token` is filled. Off by default, so an untouched install
+  exposes no extra route at all.
+
+### Requirements
+
+Stock SLiMS 9 Bulian: PHP 7.4 or newer (8.x fine), MySQL/MariaDB with the
+normal schema, and a working PHP session (the chat posts JSON to the same
+session as the page). No Composer, no Node, no Python, no external service, no
+LLM API key.
+
+### Benefits
+
+| Benefit | What it means in practice |
+| --- | --- |
+| Answers without a terminal | the same commands a librarian would type, reachable from a browser or WhatsApp |
+| Role-correct by construction | the role comes from `$_SESSION`, never from the request; a member cannot read another member's record with any phrasing |
+| No training, no cost per question | deterministic rules; nothing leaves your server |
+| Search that tolerates real typing | typo fallback, "did you mean", field-weighted relevance, popularity tie-break (`sejarh` → *Sejarah Indonesia Modern*) |
+| Discoverability of the collection | "buku populer" / "buku terbaru" turn circulation history into a reading list |
+| Gated writes with an audit trail | two-step confirmation, `allow_write` respected, one `system_log` row per commit attributed to the real user |
+| One engine, three surfaces | console, HTTP bridge and chat share the service, so behaviour cannot drift |
+| Removable | disabling the plugin restores the previous UI; nothing in the core was patched |
+
+### Risks, and what already mitigates them
+
+| Risk | What could happen | Mitigation (default) |
+| --- | --- | --- |
+| A write on live data is wrong | a wrong checkout, check-in or renewal is committed | `allow_admin_write = false` and `allow_write = false` by default; the first answer is always a dry run; confirmation is single-use and expires in 180 s; multi-record writes need `allow_bulk` **and** a backup; every commit is audited |
+| A member reads another member's data | a crafted message asks for `anggota 999` | `Policy::scope()` overwrites the member id server-side for `my.*`; the service receives the session id only |
+| PII leaks through the chat or a WhatsApp thread | e-mail, phone, address visible in a forwarded message | `memberGet()` is always called with redaction; there is no `reveal` path in the chat |
+| The webhook is exposed | anyone posting to the URL gets answers | off unless enabled *and* a token is set; wrong or missing token → `401`; unknown sender → guest, never an account; rate limited per sender; `404` when disabled |
+| The pending-action directory is reachable by URL | a stranger reads another sender's plan | file names are `sha1()` hashes of the sender key, every file starts with `<?php exit; ?>`, the directory is created `0700` with a deny-all `.htaccess`; point `channel.storage_dir` outside the web root if you can |
+| Slow search on a very large catalogue | each row runs four correlated subqueries (items, active loans, authors, popularity) | page size is capped at 100, the chat asks for 5; suggestions scan at most 300 titles; add the FULLTEXT index or check `EXPLAIN` if a query exceeds your budget |
+| Surface drift between the search and OPAC's own index | results come from `biblio` directly, not from `search_biblio`, so a record the OPAC indexer has not visited yet is still findable | records you do not want public should be `opac_hide = 1`; the chat already excludes them for guests and members |
+| Not yet exercised against a live database | the offline suite covers rules, roles, confirmation, HTTP and search building, but not MySQL execution | install with writes off, run `php index.php chatbot:selftest`, then try a staging copy and `php index.php clianything:doctor` before opening writes |
+| The bundled service copy and the Commands plugin drift apart | chat and console behave differently | the self-test compares both files with `sha1_file()` and fails when they differ |
+| A future SLiMS upgrade removes the plugin API | menus or the webhook stop appearing | the plugin only uses `registerMenu`, `custom_api_route` and `utility::isMemberLogin()` (guarded); if the hook disappears the two chat pages keep working and only the webhook goes silent |
+| Log noise | one `system_log` row per committed write | rows use `location = CLI-Anything` and can be filtered or rotated like any other |
+
+### Rolling back
+
+```bash
+php index.php plugin:deactivate <id>     # menus disappear immediately
+rm -rf plugins/chatbot                   # or move it aside
+rm config/chatbot.php
+```
+
+Nothing to un-migrate: there are no new tables or columns. What remains is
+audit history (`system_log`) and, only if you used the webhook, the
+`SB files/chatbot/` directory — both safe to delete once you have read them.
+Writes already committed are ordinary circulation records and stay.
+
+## Who sees what
+
+The role comes from the **server session**, never from the request body.
+
+| | Guest (OPAC, not logged in) | Member (OPAC, logged in) | Staff (admin) |
+| --- | --- | --- | --- |
+| Search the catalogue | ✅ | ✅ | ✅ |
+| Title detail and copy availability | ✅ | ✅ | ✅ |
+| Item status by code | ✅ | ✅ | ✅ |
+| Own loans and fines | ❌ — asked to log in | ✅ own account only | — |
+| Any member's loans | ❌ | ❌ | ✅ |
+| Daily figures, diagnostics | ❌ | ❌ | ✅ |
+| Checkout / check-in / renewal | ❌ | renewal of **own** loan, if enabled | ✅ with confirmation |
+| Other member's data | ❌ | ❌ (scope forced server-side) | ✅ redacted PII |
+| Delete anything | ❌ | ❌ | ❌ (no such command) |
+
+A guest who types *"pinjaman saya"* gets a login link, not an error. A member
+who types *"pinjaman anggota 999"* still only sees their own loans: the engine
+overwrites the member id with `$_SESSION['mid']` before calling the service.
+
+## Install
+
+1. Copy the configuration and adjust it:
+
+   ```bash
+   cp config/chatbot.sample.php config/chatbot.php
+   ```
+
+2. Activate the plugin:
+
+   ```bash
+   php index.php plugin:list --type=all      # find the id
+   php index.php plugin:activate <id>
+   ```
+
+   (Shorter form if you already generated the console shortcut: `php tarsius …`.)
+
+3. Open the surfaces:
+
+   * OPAC: `index.php?p=chatbot` — appears in the OPAC menu as **Chatbot**
+   * Staff: **System → Chatbot** (`admin/plugin_container.php?mod=system&id=…`)
+
+4. Check it before trusting it:
+
+   ```bash
+   php index.php chatbot:selftest
+   php index.php chatbot:ask "pinjaman terlambat"
+   ```
+
+
+### Stock SLiMS, no core changes
+
+The chatbot is additive: it registers a menu and an API hook through the
+plugin API that ships with SLiMS 9 Bulian. No file outside `plugins/` and
+`config/` is touched, and nothing has to be applied to `admin/`, `lib/` or
+`index.php`.
+
+```bash
+# from the SLiMS root of a pristine 9 Bulian checkout
+cp -r /path/to/repo/plugins/chatbot plugins/
+cp /path/to/repo/config/chatbot.sample.php config/chatbot.php
+php index.php plugin:list --type=all && php index.php plugin:activate <id>
+```
+
+A chatbot-only install still has a data layer: `Support/vendor/CliAnything.php`
+is a copy of the CLI-Anything service, loaded only when
+`plugins/Commands/Support/CliAnything.php` is absent (see
+`Support/vendor/README.md`). Writes stay closed until you add
+`config/cli_anything.php` with `allow_write` on — that file is read by the
+service itself, so both surfaces obey the same switch:
+
+```php
+<?php
+return ['allow_write' => true, 'user_id' => 1, 'user_name' => 'Chatbot'];
+```
+
+Requirements are the stock ones: PHP 7.4+ (8.x fine), MySQL/MariaDB with the
+SLiMS 9 schema, and the bundled `simbio2`/`lib` classes. The chatbot reads
+`biblio`, `item`, `member`, `loan`, `fines` — tables every installation has —
+and writes through SLiMS' own circulation classes, so loan rules, receipts
+and `system_log` entries are the ones the admin module produces.
+
+## What it understands
+
+Deterministic rules, both Indonesian and English. No model, no network call,
+no token cost — and every answer maps to a command a human can run.
+
+| You type | Intent | Command behind it |
+| --- | --- | --- |
+| `cari buku sejarah` / `find book history` | `biblio.list` | `clianything:biblio:list --q=sejarah` |
+| `jam buka`, `nomor telepon`, `alamat` | `faq.answer` | `config/chatbot.faq.php` (no command) |
+| `buku populer` / `terlaris` | `biblio.list` (`sort=popular`) | `clianything:biblio:list --sort=popular` |
+| `buku terbaru` | `biblio.list` (`sort=newest`) | `clianything:biblio:list --sort=newest` |
+| `apakah buku #12 tersedia?` | `biblio.get` | `clianything:biblio:get --id=12` |
+| `cek item B00001` | `item.get` | `clianything:item:get --code=B00001` |
+| `pinjaman saya` (member) | `my.loans` | `clianything:loan:list --member=<session>` |
+| `denda saya` (member) | `my.profile` | `clianything:member:get --id=<session>` |
+| `pinjaman terlambat` (staff) | `loan.list` | `clianything:loan:list --status=overdue` |
+| `anggota 123` (staff) | `member.get` | `clianything:member:get --id=123` |
+| `ringkasan hari ini` (staff) | `report.summary` | `clianything:report` |
+| `pinjamkan B00001 ke anggota 123` | `loan.checkout` | `clianything:loan:checkout` |
+| `kembalikan B00001` | `loan.checkin` | `clianything:loan:checkin` |
+| `perpanjang pinjaman 77` | `loan.extend` | `clianything:loan:extend` |
+| `perpanjang pinjaman saya` (member) | `my.extend` | same, own loan only |
+
+Short text with no keyword (`laskar pelangi`) is treated as a catalogue
+search rather than a dead end.
+
+## FAQ
+
+Some questions are not about the catalogue at all: opening hours, the phone
+number, how to join, how much the fine is. Those live in **one content file**
+the library owns — not in PHP, not in a table, not in the rule table.
+
+```
+plugins/chatbot/Support/faq.sample.php      shipped sample (15 entries)
+            ↓ copy
+config/chatbot.faq.php                      the real content, git-ignored
+```
+
+```bash
+cp plugins/chatbot/Support/faq.sample.php config/chatbot.faq.php
+php index.php chatbot:faq                    # list + validate what is loaded
+```
+
+Until you copy it, the chat answers from the sample, so a fresh install is
+useful immediately. The sample values are **examples**: hours, address, phone
+number, fines and fees all have to be replaced with your library's real
+policy before going live.
+
+### One entry
+
+```php
+[
+    'id' => 'hours',
+    'question' => 'Jam buka perpustakaan',
+    'question_en' => 'Opening hours',
+    'keywords' => ['jam buka', 'buka', 'tutup', 'opening hours', 'weekend'],
+    'answer' => 'Senin–Jumat 08.00–16.00, Sabtu 09.00–12.00.',
+    'answer_en' => 'Monday to Friday 08.00–16.00, Saturday 09.00–12.00.',
+    'link' => '',          // optional "read more"
+],
+```
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | unique; reported in the reply meta |
+| `question` | yes | shown in "sering ditanyakan" lists |
+| `question_en` | no | English title, falls back to `question` |
+| `keywords` | recommended | what people actually type, both languages; phrases work |
+| `answer` | yes | plain text, 2–4 short sentences |
+| `answer_en` | no | English answer, falls back to `answer` |
+| `link` | no | rendered as a link block |
+
+The sample covers the questions libraries actually get: opening hours,
+address, phone/WhatsApp, e-mail, membership and its fee, loan limits, renewal,
+fines, reservation, reading room and wifi, reference help, school visits,
+donations and a lost card.
+
+### How an answer is chosen
+
+* A keyword **phrase typed verbatim** ("jam buka", "nomor telepon") wins
+  outright.
+* A word that says nothing about the topic on its own (`harga`, `biaya`,
+  `info`, `free`) only counts when it *is* the question ("harga") or part of a
+  phrase ("biaya keanggotaan"). Without that rule, "berapa harga tiket bus"
+  was answered with the membership fee.
+* Otherwise a near-miss word is accepted when it matches at least 74% of a
+  keyword word (`telepn` → `telepon`) **and** the recognized words cover at
+  least 30% of what was typed. That guard is why
+  `pinjamkan B00001 ke anggota 123` is not answered with the membership page
+  just because it contains "anggota".
+* The question text is a weaker signal, for people who retype the FAQ title.
+* Nothing above `faq.threshold` (default `0.62`) is answered; below it the
+  message continues to the catalogue search, unchanged.
+
+The FAQ is only consulted where the rule table is unsure — a fallback search
+or no match at all. `pinjaman saya` stays a loan question, `cari buku sejarah`
+stays a search, and every explicit command keeps its handler. Answers are
+localized: an English question gets `answer_en` when the site locale is `en`.
+
+```php
+'faq' => [
+    'enabled' => true,
+    'file' => '',          // empty = config/chatbot.faq.php, then the sample
+    'threshold' => 0.62,   // lower = chattier, higher = stricter
+    'topics' => 3,         // alternatives offered after an answer
+],
+```
+
+`php index.php chatbot:faq` prints the source file, the entries and any
+problem (missing `id`, duplicate `id`, empty `answer`, no keywords), and exits
+non-zero when the content needs attention — safe to run in a deploy script.
+
+## Search that forgives typos
+
+A library catalogue is typed by people in a hurry: `sejarh`, `laskr pelangi`,
+`metodelogi`. The search treats that as normal input instead of an error.
+
+**1. Clean the query.** Lowercase, punctuation dropped, filler words removed in
+both languages (`buku`, `cari`, `tentang`, `the`, `find`, `populer`, …), at most
+six unique tokens of two characters or more. `"Buku tentang Sejarah Indonesia?"`
+becomes `["sejarah", "indonesia"]`.
+
+**2. Three stages, each only reached when the previous found nothing.**
+
+| Stage | What it does | Example |
+| --- | --- | --- |
+| `exact` | every token, matched anywhere in title, ISBN, call number, author, subject or publisher | `sejarah indonesia` |
+| `prefix` | the same tokens shortened by two characters, so a typo near the end still lands | `sejarh` → `seja` |
+| `suggestion` | "did you mean": titles scored with `similarity()` (normalised Levenshtein) | `laskr pelangi` → *Laskar Pelangi* 86% |
+
+Only when all three fail does the answer become `no_results`, and even then it
+keeps the tip block ("a short title, an author, an ISBN").
+
+**3. Rank the matches.** Relevance is a sum over tokens, weighted by where the
+match happened, and past loans break ties — so a well-loved title wins against
+an equally relevant one, not against a better match.
+
+| Field | Weight | Notes |
+| --- | --- | --- |
+| title, exact | 120 | case-insensitive, the collation decides |
+| ISBN/ISSN, exact | 110 | a barcode scan lands here |
+| title, starts with | 70 | |
+| title, contains | 45 | |
+| call number, starts with | 40 | |
+| author | 30 | |
+| subject | 25 | |
+| publisher | 15 | |
+| popularity | tie-break | number of loans ever recorded for that title |
+
+The weights are the `search.weights` block of `config/chatbot.php` (see
+[Tuning](#tuning)); the `prefix` stage multiplies them by 0.35, so an
+approximate hit never outranks an exact one.
+
+**4. Choose the ordering.** `sort` is part of the command, the HTTP query and
+the chat intent:
+
+| `sort` | Order | Ask for it with |
+| --- | --- | --- |
+| `relevance` (default) | rank score, then popularity, then newest | `cari buku sejarah` |
+| `popular` | popularity, then rank score | `buku populer`, `terlaris`, `paling banyak dipinjam` |
+| `newest` | `last_update` | `buku terbaru` |
+| `title` | alphabetical | console/HTTP only |
+
+"Buku populer" is not a phrase the intent table ignores: it resolves to a
+catalogue browse with `sort=popular`, and the reply shows `41x dipinjam` next to
+each row so the ordering is visible, not implied.
+
+**5. Respect the OPAC.** Records with `opac_hide = 1` are excluded for guests
+and members; staff searches include them, because a hidden record is often the
+one a librarian is looking for.
+
+### Tuning
+
+Everything above lives in one config block. The chat hands it to the same
+service the console uses, so a value applies to WhatsApp/Telegram answers too.
+Omit a key and the built-in value stays.
+
+```php
+'search' => [
+    'sort' => 'relevance',          // default ordering
+    'typo' => true,                 // shortened-token rescue stage
+    'suggestions' => 5,             // how many "did you mean" titles
+    'min_similarity' => 0.55,       // below this a suggestion is noise
+    'max_tokens' => 6,              // tokens kept after cleaning
+    'stopwords' => ['skripsi'],     // extra filler words
+    'fulltext' => true,             // use a FULLTEXT index if it exists
+    'weights' => [
+        'title_exact' => 120,
+        'title_prefix' => 70,
+        'author' => 30,
+        // … any subset
+    ],
+],
+```
+
+A partial `weights` array is merged, not replaced, so bumping `author` to 45
+keeps every other weight. The console reads the same keys from the `search`
+block of `config/cli_anything.php`; per-call options (the chat) win over the
+file, and the file wins over defaults.
+
+`fulltext` is **opt-in by schema, never by us**: the service asks
+`SHOW INDEX FROM biblio WHERE Index_type = 'FULLTEXT'` once per request and
+adds `MATCH … AGAINST (… IN BOOLEAN MODE)` only when the answer is non-empty.
+Stock SLiMS 9 has no such index, so the LIKE stages do the work; on a large
+catalogue an operator may add one and get the faster path without touching a
+single line of code:
+
+```sql
+ALTER TABLE biblio ADD FULLTEXT INDEX ft_biblio_title (title);
+```
+
+Nothing in the plugin runs `ALTER TABLE`, and a missing or broken index simply
+degrades to the LIKE search instead of failing the query.
+
+The same code answers all three surfaces, so a typo behaves the same from the
+console, the webhook, and the browser:
+
+```bash
+php index.php clianything:biblio:list --q="sejarh"
+php index.php clianything:biblio:list --q="" --sort=popular --limit=5
+cli-anything-slims biblio list --q "laskr pelangi"
+```
+
+## The write flow (two steps, always)
+
+```
+user:  pinjamkan B00001 ke anggota 123
+bot:   Rencana saja, belum ada yang ditulis
+       Anggota 123 · Rina Kartika
+       - Sejarah Indonesia Modern — B00001 · jatuh tempo 04/12/2026 [ready]
+       Konfirmasi berlaku 180 detik dan hanya bisa dipakai sekali.
+       [Konfirmasi] [Batal]
+```
+
+* The first call runs the service with `commit = false`. SLiMS' own loan-rule
+  engine runs, the temporary loan session is thrown away, nothing is written.
+* The reply carries a token: HMAC-signed with a per-session secret, bound to
+  the role and actor, valid for `confirm_ttl` seconds, single use.
+* Only `{confirm: token}` writes. A replay answers `confirm_invalid`; an
+  expired token asks you to plan again.
+* If `allow_write` (or `allow_admin_write` / `allow_member_write`) is closed,
+  the plan is still shown, together with the reason it cannot be committed.
+
+## Configuration
+
+`config/chatbot.php` (see `config/chatbot.sample.php` for the long version):
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | master switch |
+| `opac`, `admin` | `true` | which surfaces exist |
+| `language` | `auto` | `auto`, `id` or `en` |
+| `allow_admin_write` | `false` | staff checkout/check-in/renewal from the chat |
+| `allow_member_write` | `false` | member self-renewal |
+| `allow_pii_reveal` | `false` | kept for parity; the chat always redacts |
+| `rate_limit_per_minute` | `20` | messages per session |
+| `max_writes_per_hour` | `5` | confirmations per session |
+| `confirm_ttl` | `180` | token lifetime (seconds) |
+| `max_message_length` | `500` | longer messages are refused |
+| `result_limit` | `5` | rows shown per answer |
+| `search` | ranked defaults | weights, typo stage, suggestions, see [Tuning](#tuning) |
+| `faq` | on, sample | content file, threshold, alternatives, staff overlay, see [FAQ](#faq) |
+| `log` | on, 90 days | conversation log, size and retention, see [History](#history) |
+| `guard` | off | blocked questions and forbidden answers, see [Rules](#rules-blocked-questions-and-answers) |
+| `admin_history` | `true` | System -> Chatbot history page |
+| `admin_overlay` | `true` | System -> Chatbot review page (corrections) |
+| `admin_rules` | `true` | System -> Chatbot rules page |
+| `admin_llm` | `true` | System -> Chatbot LLM page (connection settings) |
+| `llm` | off | local model / OpenAI-compatible API, see [Local models](#local-models-and-openai-compatible-apis) |
+| `channel` | off | WhatsApp/Telegram webhook, see [Messaging channels](#messaging-channels) |
+
+Turning a gate on still requires `allow_write` in `config/cli_anything.php`;
+the chat never opens what the CLI keeps closed. Writes and the webhook are the
+only two things that change behaviour after installation — everything else is
+read-only and can be switched off without touching the database.
+
+## History
+
+Every message that goes through the browser endpoint or a messaging channel
+leaves one row in an append-only log:
+
+```
+files/chatbot/log-YYYYMM.ndjson.php     one file per month, rotated at 5 MB
+```
+
+No table, no schema change. Each row holds the surface, the role, the intent,
+the FAQ entry, the latency, the confirmation state and the guard rule that
+fired. It deliberately does **not** hold a member id (only a salted hash), a
+name, an e-mail or an IP; the question is cut to `log.truncate` characters, or
+reduced to a hash when `log.store_message` is false. A failed write never
+breaks an answer.
+
+* **System -> Chatbot history** (staff) filters by day range, surface, role,
+  answered/unanswered, thumbs-down and text, drills into one conversation,
+  shows the week's numbers (answered %, misses, feedback, p50/p95 latency) and
+  exports CSV.
+* `php index.php chatbot:log --days=7 --unanswered` is the same view for cron
+  and for a terminal.
+* Thumbs up/down on an answer (OPAC and channels) attach to the original row
+  by request id, so `--feedback=down` is a real queue.
+
+Retention defaults to 90 days, pruned by month; `chatbot:log --prune` runs it
+on demand.
+
+## Review and corrections
+
+**System -> Chatbot review** turns the log into fixes. The page lists what was
+asked and never answered (30 days) and what was marked unhelpful, and offers:
+
+| Action | What it writes |
+| --- | --- |
+| add a keyword | an extra phrase for an existing entry |
+| new entry | a whole entry, **draft** until activated |
+| hide / show | hides an entry without editing the content file |
+| block / out of scope | a guard rule (see below) |
+| test a question | what the chat would answer right now |
+
+Corrections go to `files/chatbot/faq.local.php`, never to
+`config/chatbot.faq.php`:
+
+```php
+return [
+    'keywords' => ['hours' => ['buka sabtu']],
+    'entries'  => [/* id, question, keywords, answer, link, status */],
+    'hidden'   => ['donation'],
+];
+```
+
+Every save is validated, written atomically (temp file + rename), keeps one
+`.bak`, can be restored with one click, and appends to
+`files/chatbot/audit.ndjson.php` with the staff label. Preview runs the matcher
+against the candidate overlay before anything is written, so "what will a guest
+see" is answered first. `faq.overlay=false` returns to the plain content file.
+
+## Rules: blocked questions and answers
+
+**System -> Chatbot rules** holds the two lists the library controls:
+
+* **question** rules run before the rule table: a blocked message never reaches
+  the catalogue or the service;
+* **answer** rules run on FAQ content at load time and on every reply before it
+  is shown, including the visible strings of a service result, so a forbidden
+  sentence cannot arrive inside a title.
+
+Each rule has a scope, a type (`phrase`, `word`, or a regex limited to 120
+characters and compile-checked on save), a category, an action
+(`refuse`, `fallback`, `hide`) and a mandatory reason. Matching normalises
+first — case, punctuation, zero-width characters, collapsed spaces, and digits
+used as letters — so `b3bas  denda!!` hits the same rule as `bebas denda`,
+while an ordinary sentence about fines does not.
+
+The page shows how many of the library's own FAQ questions each rule would also
+block: a rule that hits normal questions is visibly too broad. Everything is
+empty and inert by default (`guard.enabled` is false), so upgrading changes
+nothing until an administrator adds a rule and turns the guard on.
+
+## Local models and OpenAI-compatible APIs
+
+Optional, and off by default. The chat keeps answering from intents, FAQ and
+the catalogue service; the model is a **fallback for the one branch that has no
+answer**, never a replacement:
+
+* commands, searches, loans, members and every write keep their deterministic
+  handler — the model is not consulted;
+* a message the rule table does not recognise, or a guessed catalogue search
+  that found nothing and has no "did you mean", may be answered by the model;
+* the guard screens the model's text exactly like any other reply, and the
+  question was already screened before the engine ran.
+
+Everything in this section is inert unless `llm.enabled` is true.
+
+One shape covers Ollama (`/v1`), LM Studio, llama.cpp server, vLLM, LocalAI,
+OpenRouter and OpenAI: `POST {base_url}/chat/completions` and
+`GET {base_url}/models`.
+
+Configure it at **System -> Chatbot LLM**, or in `config/chatbot.php`, or from
+the shell:
+
+```bash
+php index.php chatbot:llm                  # what is configured (key masked)
+php index.php chatbot:llm --test           # GET /models, latency, model list
+php index.php chatbot:llm --models         # same, plus every model id
+php index.php chatbot:llm --ask="jam buka sabtu"   # the real prompt, one answer
+php index.php chatbot:llm --test --json
+```
+
+Exit codes: `0` reachable, `1` the test failed, `2` not configured (off, or no
+model). The staff page writes `files/chatbot/llm.php` (0600, PHP guard,
+outside git) so the config file stays in version control without a secret;
+`config['llm']['file']` overrides that path.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `false` | master switch; off = no request at all |
+| `provider` | `openai` | display label only |
+| `base_url` | `http://127.0.0.1:11434/v1` | API root, no `/chat/completions` |
+| `model` | `''` | e.g. `llama3.1:8b` |
+| `api_key` | `''` | optional locally; stored 0600, shown as `••••abcd` |
+| `timeout` | `15` | 3-120 seconds |
+| `max_tokens` | `256` | 16-4096 |
+| `temperature` | `0.2` | 0-2 |
+| `verify_tls` | `true` | keep it on for anything leaving the machine |
+| `allow_remote` | `false` | a host outside the local network needs an explicit yes |
+| `max_calls_per_minute` | `6` | model calls per session, per minute |
+| `use_for_answers` | `true` | let the model answer where the engine has none |
+| `circuit_failures` | `3` | consecutive failures before the breaker opens |
+| `circuit_cooldown` | `300` | seconds the breaker stays open |
+
+The prompt is two messages: one instruction ("answer in this language, at most
+60 words, you cannot see the catalogue, loans, members or opening hours, never
+invent rules or fees, never ask for personal data") and the question. No
+catalogue row, no FAQ text, no member id. A model answer is capped at 600
+characters plus one line of whitespace.
+
+When the model fails (timeout, 401, 429, malformed JSON) the visitor sees the
+deterministic answer that would have been sent anyway, the failure code goes to
+the conversation log as `stage=llm-error`, and the breaker counts it. Three
+failures in a row stop the calls for five minutes so a dead server cannot add a
+timeout to every question; **Chatbot LLM** shows the state and a reset button.
+
+What the client refuses, by design:
+
+* schemes other than `http`/`https`, URLs with credentials, query or fragment;
+* cloud metadata addresses (`169.254.169.254`, `metadata.google.internal`) even
+  with `allow_remote`;
+* redirects (`follow_location` off) and replies above 256 KB;
+* more than 8 messages, unknown roles, and messages longer than 4000 characters.
+
+Failures are codes, not exceptions: `DISABLED`, `NOT_CONFIGURED`,
+`REMOTE_BLOCKED`, `UNAUTHORISED`, `RATE_LIMITED`, `SERVER_ERROR`,
+`BAD_RESPONSE`, `EMPTY_CHOICE`, `RESPONSE_TOO_LARGE`, `TIMEOUT`,
+`CONNECTION_FAILED`. Provider text is trimmed to 200 characters and the API key
+is scrubbed out of it before it reaches a page or a log.
+
+## Measurement
+
+Not "it worked when I tried it", but numbers:
+
+```bash
+php index.php chatbot:eval            # corpus accuracy, typo tolerance, parity, render contract
+php index.php chatbot:eval --sweep    # precision/recall for thresholds 0.40-0.80
+CHATBOT_E2E=1 php index.php chatbot:e2e   # read-only dialogues against the live DB
+```
+
+* `tests/corpus.php` holds 124 phrasings in Indonesian and English for the
+  three roles, including negatives that must never be answered by the FAQ
+  ("pinjamkan B00001 ke anggota 123", "pinjamkan…" as a guest, catalogue
+  searches, member questions).
+* Targets: accuracy >= 95%, **zero** negative misses, typo tolerance >= 90% of
+  one-edit keyword variants, the default threshold `0.62` must sit on a
+  precision/recall plateau, both languages must carry the same keys and
+  placeholders, and every rendered answer must have text, well-formed blocks
+  and no unresolved `:placeholder`.
+* `chatbot:eval` exits non-zero when a target is missed, so a release can be
+  gated on it. `chatbot:e2e` refuses to run without `CHATBOT_E2E=1` and only
+  performs reads.
+
+## HTTP contract
+
+`POST index.php?p=chatbot&action=ask` (OPAC) or
+`POST admin/plugin_container.php?mod=system&id=<hash>&action=ask` (staff).
+
+```json
+{"message": "pinjaman saya", "csrf_token": "…"}
+```
+
+```json
+{
+  "ok": true,
+  "schema": "1.0",
+  "role": "member",
+  "locale": "id",
+  "reply": {
+    "text": "1 pinjaman aktif:",
+    "blocks": [
+      {"type": "list", "items": [
+        {"title": "Sejarah Indonesia Modern", "meta": "B00001 · dipinjam 01/11/2026",
+         "badge": "terlambat 19 hari", "tone": "warn"}
+      ]}
+    ]
+  },
+  "suggestions": ["pinjaman saya", "denda saya", "…"],
+  "pending": null,
+  "meta": {"writes_enabled": false, "confirm_ttl": 180, "intent": "my.loans"},
+  "surface": "opac"
+}
+```
+
+Block types: `text`, `notice` (`info|success|warn|error`), `facts`, `list`,
+`link`. The browser renders every string with `textContent`, so a title
+containing markup stays text.
+
+Errors use the same envelope version as the CLI:
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `CSRF_FAILED` | 403 | page reloaded or session expired |
+| `EMPTY_MESSAGE` | 422 | neither a message nor a confirmation was sent |
+| `CHATBOT_DISABLED` | 422 | surface switched off in `config/chatbot.php` |
+| `confirm_invalid` / `confirm_expired` | 200 (in reply) | token replayed, tampered with, or too old |
+| `BIBLIO_NOT_FOUND`, `MEMBER_NOT_FOUND`, `ITEM_NOT_FOUND`, `LOAN_NOT_FOUND` | 422 | passed through from the service |
+| `WRITE_DISABLED`, `BULK_DISABLED`, `LOAN_REJECTED` | 422 | passed through from CLI-Anything |
+
+## Messaging channels
+
+<a id="messaging-channels"></a>
+
+The same engine, reached from a webhook instead of a browser, so a library can
+answer on WhatsApp or Telegram without a second implementation. Only three
+things differ: **identity**, **confirmation** and **formatting**.
+
+### Endpoint
+
+```
+POST index.php?p=api/chatbot/v1/message
+GET  index.php?p=api/chatbot/v1/message      # WhatsApp Cloud handshake
+```
+
+Authentication is a single shared token, sent as `X-Chatbot-Token: <token>` or
+`Authorization: Bearer <token>`. The route only exists when
+`channel.enabled` is on *and* `channel.token` is not empty; otherwise
+`404 CHATBOT_DISABLED`.
+
+The `GET` form answers the Meta verification: with `hub.mode=subscribe` and a
+matching `hub.verify_token` it echoes `hub.challenge`; anything else is `403`.
+
+### Payloads
+
+The body may be a native payload or the normalized short form; the channel is
+detected, so one URL serves every gateway.
+
+| Source | Shape understood |
+| --- | --- |
+| Telegram | `{"message": {"chat": {"id": 987654321}, "text": "pinjaman terlambat"}}` |
+| WhatsApp Cloud | `{"entry": [{"changes": [{"value": {"messages": [{"from": "628123456789", "text": {"body": "…"}}]}}]}]}` |
+| Local gateway | `{"phone": "628123456789", "message": "…"}` |
+| Normalized | `{"channel": "telegram", "from": "987654321", "text": "…"}` |
+
+### Identity
+
+`channel.members` and `channel.staff` are the entire mapping, keyed
+`<channel>:<from>` (lower-cased). A key that is not in either list is a
+**guest** — never a member guessed from the message text, never an account
+looked up by phone number. Staff entries map to a `uid`; member entries map to
+a member id and are scoped by `Policy::scope()` exactly like a logged-in OPAC
+session.
+
+```php
+'members' => ['whatsapp:628123456789' => 'M001'],
+'staff'   => ['telegram:987654321'    => 1],
+```
+
+A guest asking *"pinjaman saya"* gets the login link, not an error.
+
+### Confirmation without a cookie
+
+There is no session to bind a token to, so `Engine(…, stateless: true)` returns
+its `pending.action` as data, and `ChannelStore` keeps it per sender in one
+guarded file (`<?php exit; ?>` + JSON, `flock`, TTL pruned on read). The reply
+ends with *"Balas YA untuk menulis, atau BATAL untuk membatalkan."* — `YA`
+(localized via `channel.confirm_words`) executes the plan once, `BATAL` drops
+it, and an expired plan answers `channel_expired`. The plan is removed *before*
+it runs, so a double-sent "YA" cannot check out two copies.
+
+### Reply format
+
+Plain text, capped at 1400 characters, cut with `…`. Facts render as
+`Anggota: 123 · Rina`, records as `• Title` + indented meta + `[badge]`, and
+notices with `[i]`, `[!]`, `[ok]`, `[x]`:
+
+```
+Rencana saja, belum ada yang ditulis
+Anggota: 123 · Rina Kartika
+• Sejarah Indonesia Modern
+  B00001 · Jatuh tempo 04/12/2026 [ready]
+[!] Periksa rinciannya, lalu konfirmasi. Konfirmasi berlaku 180 detik dan hanya bisa dipakai sekali.
+
+Balas YA untuk menulis, atau BATAL untuk membatalkan.
+```
+
+### Errors
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `CHATBOT_DISABLED` | 404 | `channel.enabled` off or token empty |
+| `UNAUTHORIZED` | 401 | missing or wrong token |
+| `EMPTY_MESSAGE` | 422 | no text in the payload |
+| `PAYLOAD_TOO_LARGE` | 413 | body above 256 KB; nothing is parsed |
+| `RATE_LIMITED` | 429 | over `rate_limit_per_minute` for this sender |
+| `UNEXPECTED_ERROR` | 422 | the service failed; the code is in the reply, the text is in the log |
+
+### Storage
+
+Pending actions and counters live in `channel.storage_dir`, defaulting to
+`SB files/chatbot/`. The directory is created `0700` with a deny-all
+`.htaccess` and an empty `index.html`; file names are `sha1(channel|from)`, so
+a phone number never appears on disk. Two buckets are counted per sender:
+`messages` (per minute) and `writes` (per hour, from `max_writes_per_hour`).
+
+### Console equivalents
+
+`php index.php chatbot:ask "pinjaman saya" --role=member --as=123` answers the
+same question with the same engine, one message at a time and without the
+store — useful to reproduce what a gateway reported.
+
+## Console equivalents
+
+```bash
+php index.php chatbot:selftest                 # 180 offline checks, no DB
+php index.php chatbot:ask "pinjaman terlambat" # staff view
+php index.php chatbot:ask "pinjaman saya" --role=member --as=123
+php index.php chatbot:ask "pinjamkan B00001 ke anggota 123" --commit
+php index.php chatbot:ask "buku populer"                    # sort=popular
+php index.php chatbot:ask "cari sejarh"                     # typo-tolerant
+php index.php chatbot:faq                                   # FAQ content check
+php index.php chatbot:faq --strict                          # + sample values, hidden entries
+php index.php chatbot:ask "jam buka"                        # FAQ answer
+php index.php chatbot:ask "ringkasan hari ini" --json
+php index.php chatbot:log --days=7 --unanswered             # the week's misses
+php index.php chatbot:log --prune                           # apply retention
+php index.php chatbot:eval                                  # accuracy + typo tolerance
+php index.php chatbot:eval --sweep                          # threshold table
+CHATBOT_E2E=1 php index.php chatbot:e2e                     # live-DB smoke test
+```
+
+`--commit` is the console form of the Confirm button: same gates, same audit,
+no token needed because the flag itself is the operator's confirmation.
+
+## Security notes
+
+Implementation detail behind the risks above.
+
+* **Role from the session.** `Actor::fromOpac()` reads `$_SESSION['mid']`
+  (+ `utility::isMemberLogin()`); the staff page cannot even render without
+  `admin/default/session_check.inc.php`. A crafted POST cannot promote itself.
+* **Member scope is server-side.** `Policy::scope()` overwrites the member id
+  for `my.*` intents; a member can never filter another account.
+* **CSRF.** A per-session token is embedded in the page and required on every
+  POST (`X-CSRF-Token` or `csrf_token` in the body).
+* **Rate limits** per session for messages and for writes.
+* **PII.** `memberGet()` is always called with redaction on, so email, phone
+  and address arrive as `***redacted***`. There is no `reveal` path.
+* **The webhook has its own token** and is off unless both `channel.enabled`
+  and `channel.token` are set. It is a separate switch from the browser
+  surfaces; the shared token never reaches the page.
+* **Channel identity is an allow-list.** `channel.members` / `channel.staff`
+  map a phone number or chat id to one account; an unknown sender is a guest.
+  A message can never claim a role, and the member id is overwritten by
+  `Policy::scope()` for `my.*` exactly as in the browser.
+* **Pending actions are files, not sessions.** One `sha1(channel|from).php`
+  per sender, guarded, locked and pruned; the action is deleted *before* it is
+  executed, so a replayed "YA" finds nothing.
+* **No destructive command** exists in CLI-Anything, so the chat cannot delete
+  a record even if a message asks for it.
+* **CSP-friendly.** No inline JavaScript; the small admin wrapper style moved
+  into `assets/chatbot.css`.
+
+## When something goes wrong
+
+The chat is an unauthenticated surface in front of a database, so the failure
+paths are part of the design, not an afterthought.
+
+* **A broken config boots.** `Config::sanitise()` runs on every load: sections
+  that are not arrays fall back to their defaults, `"on"/"off"/"1"/"0"` are
+  accepted for flags, numbers are clamped (threshold 0.30–0.95, message length
+  40–2000, retention 1–3650 days, files 1–100) and the repair is remembered.
+  `chatbot:selftest` prints the repaired keys at the end, so a typo does not
+  stay invisible. Without this, `'threshold' => 'abc'` became `0.0` and the FAQ
+  answered everything.
+* **Request bodies are bounded.** Both the browser endpoint and the webhook
+  read `php://input` through `Http::body()` with a 256 KB ceiling and JSON
+  depth 32; above it the webhook answers 413 `PAYLOAD_TOO_LARGE` without
+  decoding anything.
+* **Errors are codes, not stack traces.** A service exception becomes
+  `UNEXPECTED_ERROR`; guests and members see the generic sentence, staff see
+  the code and message, and the conversation log stores the code. The raw
+  message can name tables or a patron id, so it never goes into a public reply.
+* **The webhook reply keeps the code.** A failed answer is no longer an empty
+  "ok" response: `error.code` tells an integration whether to retry.
+* **Writes fail soft.** A log row that cannot be written, a lock that cannot
+  be taken, or a missing `files/` directory never turns a correct answer into
+  an error.
+
+## Files
+
+```
+plugins/chatbot/
+├── chatbot.plugin.php          menu registration (opac + system)
+├── bootstrap.php               `Chatbot\` autoloader
+├── Support/
+│   ├── Engine.php              intent -> service -> reply (the orchestrator)
+│   ├── Intent.php              deterministic rule table (pure)
+│   ├── Policy.php              role matrix, scoping, write gates (pure)
+│   ├── Actor.php               role detection from the two SLiMS sessions
+│   ├── Confirm.php             single-use HMAC confirmation tokens
+│   ├── Channel.php             webhook -> identity -> engine -> plain text
+│   ├── ChannelStore.php        per-sender pending action + counters (flock)
+│   ├── Webhook.php             the `api/chatbot/v1/message` route
+│   ├── RateLimit.php           per-session counters
+│   ├── Http.php                POST / CSRF / JSON envelope
+│   ├── View.php                server-rendered chat shell (escaped)
+│   ├── Lang.php                English + Indonesian copy
+│   ├── Str.php                 mbstring fallback
+│   ├── Config.php              defaults + config/chatbot.php
+│   ├── Faq.php                 FAQ matching over one content file
+│   ├── faq.sample.php          the shipped sample content (15 entries)
+│   ├── Overlay.php             staff corrections (keywords, drafts, hidden)
+│   ├── Guard.php               blocked questions and forbidden answers
+│   ├── LogStore.php            NDJSON conversation log (rotate, prune, hash)
+│   ├── History.php             filters, paging, CSV, summary for staff
+│   ├── Evaluation.php          corpus accuracy, sweep, typo fuzz, parity
+│   ├── Llm.php                 local/OpenAI-compatible client + settings
+│   ├── LlmBreaker.php          stops calling a model that keeps failing
+│   ├── Admin.php               which staff surface is open to whom
+│   ├── TestService.php         fake CLI-Anything for offline tests
+│   ├── vendor/
+│   │   ├── CliAnything.php     copy of the service, stock-install fallback
+│   │   └── README.md           why it exists and how to re-sync it
+│   └── SelfTest.php            206 assertions
+├── pages/
+│   ├── opac.php                ?p=chatbot (guest + member)
+│   ├── admin.php               System -> Chatbot (staff)
+│   ├── history.php             System -> Chatbot history (read-only log)
+│   ├── review.php              System -> Chatbot review (corrections)
+│   ├── rules.php               System -> Chatbot rules (block lists)
+│   └── llm.php                 System -> Chatbot LLM (connection settings)
+├── assets/
+│   ├── chatbot.css
+│   └── chatbot.js
+└── tests/
+    ├── run.php                 `php plugins/chatbot/tests/run.php`
+    └── corpus.php              the evaluation corpus (data, not code)
+```
+
+## Testing
+
+```bash
+php plugins/chatbot/tests/run.php   # standalone, no SLiMS boot, no DB
+php index.php chatbot:selftest      # inside SLiMS, same suite + table output
+```
+
+The suite covers the intent table (Indonesian + English), role policy,
+confirmation replay/expiry/binding, rate limits, the engine against a fake
+service, the HTTP pipeline (CSRF, empty message, disabled plugin), the messaging
+channel (payload normalization, allow-list identity, guest/member/staff
+replies, YA/BATAL flow, replay, throttle, stale action, guarded store), the
+stock-install path (service resolution without the Commands plugin, envelope
+version, bundled copy in sync, greeting without a database), the search
+pipeline (tokenizer, similarity, ranking fragments, typo fallback, did-you-mean
+rendering, sort hints, hidden records, configurable weights, the optional
+FULLTEXT branch), the FAQ (content validation, phrase and typo matching, the
+coverage guard, locale selection, the help listing), the conversation log
+(format, guard prefix, hashing, truncation, rotation, retention, unwritable
+directory, HTTP and channel rows), the staff history (filters, paging, CSV
+quoting, escaping, permission gate), the overlay (drafts, activation, hidden
+entries, refused input, audit, revert, preview), the guard (bypass variants,
+invalid rules, answer screening, over-blocking), the evaluation targets
+(corpus accuracy, threshold plateau, typo tolerance, language parity, render
+contract), the model connection (settings repair, key masking, endpoint
+joining, request shape, address policy, every failure code, atomic save with
+audit) and its fallback behaviour (off = identical answer, prompt carries only
+the question, commands never reach the model, the answer guard screens it,
+timeouts keep the old text, the breaker opens after three failures, the
+per-minute budget), and the escaping of the rendered shell.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| No *Chatbot* menu in OPAC | plugin not active | `php index.php plugin:list --type=all`, then `plugin:activate <id>` |
+| `UNEXPECTED_ERROR` on every question, page still renders | the bundled service file is missing from `Support/vendor/` | re-copy `plugins/chatbot/`; `php plugins/chatbot/tests/run.php` checks for it |
+| *"Writes are disabled"* on a stock install | `config/cli_anything.php` absent or `allow_write` off | create the file, turn `allow_write` on |
+| "Asisten perpustakaan sedang dimatikan" | `enabled`/`opac`/`admin` is false | edit `config/chatbot.php` |
+| Every send says the session expired | CSRF token missing (page cached, or cookies blocked) | reload the page; check the session driver |
+| Confirm button answers "expired" | slower than `confirm_ttl` | ask again; the plan is rebuilt |
+| Plan shown but never writable | `allow_write` or `allow_admin_write` is off | enable deliberately, then re-check `doctor` |
+| Answer says `UNEXPECTED_ERROR` | the service threw (DB, missing `loan_history`) | run `php index.php clianything:doctor` |
